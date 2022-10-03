@@ -11,10 +11,10 @@ version:            0.1.0.0
 -- A URL where users can report bugs.
 -- bug-reports:
 
--- The license under which the package is released.
--- license:
-author:             Wissle
+license:            MIT
+author:             Wissle Lim
 maintainer:         jongsome@gmail.com
+category:           Graphics
 
 -- A copyright notice.
 -- copyright:
@@ -31,4 +31,21 @@ executable paint-spill
     -- other-extensions:
     build-depends:    base ^>=4.14.3.0
     hs-source-dirs:   app
+    default-language: Haskell2010
+
+library
+    hs-source-dirs:   paint-spill
+    build-depends:    base ^>=4.14.3.0
+    exposed-modules:  Graphics.PaintSpill
+    default-language: Haskell2010
+
+test-suite test-paint-spill
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    build-depends:
+      , base ^>=4.14.3.0
+      , tasty
+      , tasty-hunit
+      , paint-spill
     default-language: Haskell2010
