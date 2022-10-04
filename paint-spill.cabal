@@ -26,7 +26,11 @@ library
     build-depends:
       , base ^>=4.14.3.0
       , mtl
-    exposed-modules:  Graphics.PaintSpill
+      , linear
+    exposed-modules:
+        Graphics.PaintSpill
+      , Graphics.PaintSpill.Geom
+
     default-language: Haskell2010
 
 test-suite test-paint-spill
@@ -34,8 +38,11 @@ test-suite test-paint-spill
     main-is:          Main.hs
     hs-source-dirs:   test
     build-depends:
-      , base ^>=4.14.3.0
+        base ^>=4.14.3.0
       , tasty
       , tasty-hunit
       , paint-spill
+      , linear
+    exposed-modules:
+        Test.Geom
     default-language: Haskell2010
