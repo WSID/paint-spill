@@ -6,6 +6,8 @@ module Graphics.PaintSpill.Geom where
 import Data.List.NonEmpty (NonEmpty (..), (<|))
 import qualified Data.List.NonEmpty as N
 import Data.Maybe
+
+import Control.DeepSeq
 import Linear
 
 -- | Get y coordinate of a segment.
@@ -68,6 +70,9 @@ xstripYDown end strip start x
 --
 data Triangle a = Triangle a a a deriving (Eq, Functor, Foldable)
 
+instance NFData a => NFData (Triangle a) where
+    rnf (Triangle a b c) = rnf a `seq` rnf b `seq` rnf c `seq` ()
+
 -- | Membership check for triangle, as shape.
 triElem :: (Ord a, Fractional a) => Triangle (V2 a) -> V2 a -> Bool
 triElem (Triangle a b c) e = (0 <= i) && (0 <= j) && (i + j <= 1)
@@ -79,6 +84,9 @@ triElem (Triangle a b c) e = (0 <= i) && (0 <= j) && (i + j <= 1)
     V2 i j = ae *! inv22 m
 
 data XMonotone a = XMonotone a [a] [a] a
+
+instance NFData a => NFData (XMonotone a) where
+    rnf (XMonotone e u d s) = rnf e `seq` rnf u `seq` rnf d `seq` rnf s `seq` ()
 
 -- | Get Y range of a x monotone.
 xmonoY :: (Ord a, Fractional a) => XMonotone (V2 a) -> a -> (a, a)
