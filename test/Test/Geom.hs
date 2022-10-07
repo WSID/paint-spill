@@ -1,11 +1,32 @@
 module Test.Geom where
 
+import Data.Bool
+
 import Test.Tasty
 import Test.Tasty.HUnit
 
 import Linear
 
 import Graphics.PaintSpill.Geom
+
+
+-- Makes grid membership distribution
+makeCoordList :: V2 Float -> V2 Float -> V2 Float -> [[V2 Float]]
+makeCoordList (V2 sx sy) (V2 nx ny) (V2 ex ey) =
+    (\y -> (`V2` y) <$> [sx, nx .. ex]) <$> reverse [sy, ny .. ey]
+
+coordList :: [[V2 Float]]
+coordList = makeCoordList (V2 (-4) (-4)) (V2 (-3.75) (-3.75)) (V2 4 4)
+
+mapCoordList :: (a -> b) -> [[a]] -> [[b]]
+mapCoordList f a = fmap f <$> a
+
+zipCoordList :: (a -> b -> c) -> [[a]] -> [[b]] -> [[c]]
+zipCoordList f = zipWith (zipWith f)
+
+newtype CoverMap = CoverMap [[Bool]] deriving Eq
+instance Show CoverMap where
+    show (CoverMap a) = "\n" ++ (unlines $ fmap (fmap $ bool ' ' '*') a) 
 
 testGeom :: TestTree
 testGeom = testGroup "Geom"
@@ -78,7 +99,11 @@ testGeom = testGroup "Geom"
           ]
 
       , testGroup "xmonoY"
-          [ testCase "Simple" $ do
+          [ testCase "Triangle" $ do
+                let monotone = XMonotone (V2 1 0) [V2 0 1] [] (V2 0 0)
+                xmonoY monotone 0 @?= (0, 1)
+                xmonoY monotone 1 @?= (0, 0)
+          , testCase "Simple" $ do
                 let monotone = XMonotone (V2 1 0) [V2 0 1] [V2 0 (-1)] (V2 (-1) 0)
                 xmonoY monotone 0 @?= ((-1), 1)
                 xmonoY monotone 0.5 @?= ((-0.5), 0.5)
@@ -86,6 +111,13 @@ testGeom = testGroup "Geom"
                 let monotone = XMonotone (V2 1 0) [V2 0 1] [V2 0 (-1)] (V2 (-1) 0)
                 xmonoY monotone 1 @?= (0, 0)
                 xmonoY monotone (-1) @?= (0, 0)
+          , testCase "Vertical" $ do
+                let monotone = XMonotone
+                        (V2 1 2)
+                        [V2 0 2, V2 0 3]
+                        [V2 0 0, V2 0 1]
+                        (V2 (-1) 2)
+                xmonoY monotone 0 @?= (0, 3)
           , testCase "More" $ do
                 let monotone = XMonotone
                         (V2 3 2)
@@ -105,6 +137,7 @@ testGeom = testGroup "Geom"
                 -- -1 |  x *
                 xmonoElem monotone (V2 0 0) @?= True
                 xmonoElem monotone (V2 (-1) (-1)) @?= False
+                xmonoElem monotone (V2 3 0) @?= False
           , testCase "More" $ do
                 let monotone = XMonotone
                         (V2 3 2)
@@ -123,6 +156,139 @@ testGeom = testGroup "Geom"
                 xmonoElem monotone (V2 2 0) @?= False
                 xmonoElem monotone (V2 2 2) @?= True
                 xmonoElem monotone (V2 (-1) 2) @?= False
+                xmonoElem monotone (V2 4 2) @?= False
+                xmonoElem monotone (V2 (-3) (-2)) @?= False 
+          ]
+    
+      , testGroup "triangulateMonotone"
+          [ testCase "Triangle" $ do
+                let monotone = XMonotone (V2 1 0) [V2 0 1] [] (V2 0 0)
+                    triangles = triangulateXMono monotone
+
+                    monoMap = mapCoordList (xmonoElem monotone) coordList
+                    triMaps = fmap (\t -> mapCoordList (triElem t) coordList) triangles
+                    triMap = foldr (zipCoordList (||)) (fmap (False <$) coordList) triMaps
+
+                assertEqual
+                    "Monotone and Triangulation covers same."
+                    (CoverMap monoMap)
+                    (CoverMap triMap)
+
+          , testCase "Triangle Low" $ do
+                let monotone = XMonotone (V2 1 0) [] [V2 0 (-1)] (V2 0 0)
+                    triangles = triangulateXMono monotone
+
+                    monoMap = mapCoordList (xmonoElem monotone) coordList
+                    triMaps = fmap (\t -> mapCoordList (triElem t) coordList) triangles
+                    triMap = foldr (zipCoordList (||)) (fmap (False <$) coordList) triMaps
+
+                assertEqual
+                    "Monotone and Triangulation covers same."
+                    (CoverMap monoMap)
+                    (CoverMap triMap)
+
+          , testCase "Upside Zigs" $ do
+                let monotone = XMonotone (V2 3 0) [V2 2 2, V2 1 1, V2 (-1) 2, V2 (-2) 2] [] (V2 (-3) 0)
+                    triangles = triangulateXMono monotone
+
+                    monoMap = mapCoordList (xmonoElem monotone) coordList
+                    triMaps = fmap (\t -> mapCoordList (triElem t) coordList) triangles
+                    triMap = foldr (zipCoordList (||)) (fmap (False <$) coordList) triMaps
+
+                print (xmonoY monotone 2.75)
+
+                assertEqual
+                    "Monotone and Triangulation covers same."
+                    (CoverMap monoMap)
+                    (CoverMap triMap)
+        
+          , testCase "Downside Zigs" $ do
+                let monotone = XMonotone (V2 3 3) [] [V2 2 1, V2 1 2, V2 (-1) 1, V2 (-2) 1] (V2 (-3) 3)
+                    triangles = triangulateXMono monotone
+
+                    monoMap = mapCoordList (xmonoElem monotone) coordList
+                    triMaps = fmap (\t -> mapCoordList (triElem t) coordList) triangles
+                    triMap = foldr (zipCoordList (||)) (fmap (False <$) coordList) triMaps
+
+                print (xmonoY monotone 2.75)
+
+                assertEqual
+                    "Monotone and Triangulation covers same."
+                    (CoverMap monoMap)
+                    (CoverMap triMap)
+
+          , testCase "Upside Zigs 1" $ do
+                let monotone = XMonotone (V2 3 0) [V2 2 2, V2 1 1, V2 (-1) 2, V2 (-2) 2] [V2 0 (-1)] (V2 (-3) 0)
+                    triangles = triangulateXMono monotone
+
+                    monoMap = mapCoordList (xmonoElem monotone) coordList
+                    triMaps = fmap (\t -> mapCoordList (triElem t) coordList) triangles
+                    triMap = foldr (zipCoordList (||)) (fmap (False <$) coordList) triMaps
+
+                assertEqual
+                    "Monotone and Triangulation covers same."
+                    (CoverMap monoMap)
+                    (CoverMap triMap)
+        
+          , testCase "Downside Zigs 1" $ do
+                let monotone = XMonotone (V2 3 3) [V2 0 4] [V2 2 1, V2 1 2, V2 (-1) 1, V2 (-2) 1] (V2 (-3) 3)
+                    triangles = triangulateXMono monotone
+
+                    monoMap = mapCoordList (xmonoElem monotone) coordList
+                    triMaps = fmap (\t -> mapCoordList (triElem t) coordList) triangles
+                    triMap = foldr (zipCoordList (||)) (fmap (False <$) coordList) triMaps
+
+                assertEqual
+                    "Monotone and Triangulation covers same."
+                    (CoverMap monoMap)
+                    (CoverMap triMap)
+
+          , testCase "Simple" $ do
+                let monotone = XMonotone (V2 1 0) [V2 0 1] [V2 0 (-1)] (V2 (-1) 0)
+                    triangles = triangulateXMono monotone
+
+                    monoMap = mapCoordList (xmonoElem monotone) coordList
+                    triMaps = fmap (\t -> mapCoordList (triElem t) coordList) triangles
+                    triMap = foldr (zipCoordList (||)) (fmap (False <$) coordList) triMaps
+
+                assertEqual
+                    "Monotone and Triangulation covers same."
+                    (CoverMap monoMap)
+                    (CoverMap triMap)
+
+          , testCase "Vertical" $ do
+                let monotone = XMonotone
+                        (V2 1 2)
+                        [V2 0 2, V2 0 3]
+                        [V2 0 0, V2 0 1]
+                        (V2 (-1) 2)
+                    triangles = triangulateXMono monotone
+
+                    monoMap = mapCoordList (xmonoElem monotone) coordList
+                    triMaps = fmap (\t -> mapCoordList (triElem t) coordList) triangles
+                    triMap = foldr (zipCoordList (||)) (fmap (False <$) coordList) triMaps
+
+                assertEqual
+                    "Monotone and Triangulation covers same."
+                    (CoverMap monoMap)
+                    (CoverMap triMap)
+
+          , testCase "More" $ do
+                let monotone = XMonotone
+                        (V2 3 2)
+                        [V2 2 4, V2 (-1) 1]
+                        [V2 1 0, V2 0 0, V2 (-1) (-2)]
+                        (V2 (-2) (-2))
+                    triangles = triangulateXMono monotone
+
+                    monoMap = mapCoordList (xmonoElem monotone) coordList
+                    triMaps = fmap (\t -> mapCoordList (triElem t) coordList) triangles
+                    triMap = foldr (zipCoordList (||)) (fmap (False <$) coordList) triMaps
+
+                assertEqual
+                    "Monotone and Triangulation covers same."
+                    (CoverMap monoMap)
+                    (CoverMap triMap)
           ]
       ]
   ]
