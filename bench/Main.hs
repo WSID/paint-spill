@@ -1,4 +1,7 @@
+module Main where
+
 import Gauge
+import Bench.Geom
 
 main :: IO ()
-main = defaultMain []
+main = defaultMain [benchGeom]
