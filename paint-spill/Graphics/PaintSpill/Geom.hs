@@ -103,91 +103,97 @@ xmonoElem mt (V2 x y) = (sx <= x) && (x <= ex) && (l <= y) && (y <= h)
 
 
 -- | Triangulate Monotone
+
 triangulateXMono :: (Ord a, Fractional a) => XMonotone (V2 a) -> [Triangle (V2 a)]
-triangulateXMono (XMonotone e (ua : u) (da : d) s)
-  | dax <= uax  = triangulateXMonoUp (ua :| [e]) (XMonotone e u (da : d) s)
-  | otherwise   = triangulateXMonoDown (da :| [e]) (XMonotone e (ua : u) d s)
+triangulateXMono m = triangulateXMonoGo m []
+
+
+triangulateXMonoGo :: (Ord a, Fractional a) => XMonotone (V2 a) -> [Triangle (V2 a)] -> [Triangle (V2 a)]
+triangulateXMonoGo (XMonotone e (ua : u) (da : d) s) accum
+  | dax <= uax  = triangulateXMonoUp (ua :| [e]) (XMonotone e u (da : d) s) accum
+  | otherwise   = triangulateXMonoDown (da :| [e]) (XMonotone e (ua : u) d s) accum
   where
     V2 uax _ = ua
     V2 dax _ = da
-triangulateXMono (XMonotone e (ua : u) [] s) = triangulateXMonoUpOnly (ua :| [e]) s u 
-triangulateXMono (XMonotone e [] (da : d) s) = triangulateXMonoDownOnly (da :| [e]) s d
-triangulateXMono _ = []
+triangulateXMonoGo (XMonotone e (ua : u) [] s) accum = triangulateXMonoUpOnly (ua :| [e]) s u accum
+triangulateXMonoGo (XMonotone e [] (da : d) s) accum = triangulateXMonoDownOnly (da :| [e]) s d accum
+triangulateXMonoGo _ accum = accum
 
 
-triangulateXMonoUp :: (Ord a, Fractional a) => NonEmpty (V2 a) -> XMonotone (V2 a) -> [Triangle (V2 a)]
-triangulateXMonoUp st (XMonotone e (ua : u) (da : d) s)
+triangulateXMonoUp :: (Ord a, Fractional a) => NonEmpty (V2 a) -> XMonotone (V2 a) -> [Triangle (V2 a)] -> [Triangle (V2 a)]
+triangulateXMonoUp st (XMonotone e (ua : u) (da : d) s) accum
   | dax <= uax  =
-      let (r, nst) = stackWindUp (ua <| st)
-      in triangulateXMonoUp nst (XMonotone e u (da : d) s) ++ r
+      let (naccum, nst) = stackWindUp (ua <| st) accum
+      in triangulateXMonoUp nst (XMonotone e u (da : d) s) naccum
   | otherwise   =
       let sth :| _ = st
-      in triangulateXMono (XMonotone sth (ua : u) (da : d) s) ++ stackFlushUp da st
+      in triangulateXMonoGo (XMonotone sth (ua : u) (da : d) s) (stackFlushUp da st accum)
   where
     V2 uax _ = ua
     V2 dax _ = da
-triangulateXMonoUp st (XMonotone e [] (da : d) s) =
+triangulateXMonoUp st (XMonotone e [] (da : d) s) accum =
   let sth :| _ = st
-  in triangulateXMonoDownOnly (da :| [sth]) s d ++ stackFlushUp da st
-triangulateXMonoUp _ mt = error "Not happening!"
+  in triangulateXMonoDownOnly (da :| [sth]) s d (stackFlushUp da st accum)
+triangulateXMonoUp _ mt accum = error "Not happening!"
 
-triangulateXMonoDown :: (Ord a, Fractional a) => NonEmpty (V2 a) -> XMonotone (V2 a) -> [Triangle (V2 a)]
-triangulateXMonoDown st (XMonotone e (ua : u) (da : d) s)
+
+triangulateXMonoDown :: (Ord a, Fractional a) => NonEmpty (V2 a) -> XMonotone (V2 a) -> [Triangle (V2 a)] -> [Triangle (V2 a)]
+triangulateXMonoDown st (XMonotone e (ua : u) (da : d) s) accum
   | uax < dax   =
-      let (r, nst) = stackWindDown (da <| st)
-      in triangulateXMonoDown nst (XMonotone e (ua : u) d s) ++ r
+      let (naccum, nst) = stackWindDown (da <| st) accum
+      in triangulateXMonoDown nst (XMonotone e (ua : u) d s) naccum
   | otherwise   =
       let sth :| _ = st
-      in triangulateXMono (XMonotone sth (ua : u) (da : d) s) ++ stackFlushDown ua st
+      in triangulateXMonoGo (XMonotone sth (ua : u) (da : d) s) (stackFlushDown ua st accum)
   where
     V2 uax _ = ua
     V2 dax _ = da
-triangulateXMonoDown st (XMonotone e (ua : u) [] s) =
+triangulateXMonoDown st (XMonotone e (ua : u) [] s) accum =
     let sth :| _ = st
-    in triangulateXMonoUpOnly (ua :| [sth]) s u ++ stackFlushDown ua st
+    in triangulateXMonoUpOnly (ua :| [sth]) s u (stackFlushDown ua st accum)
 
-triangulateXMonoDown _ mt = error "Not happening!"
-
-
-triangulateXMonoUpOnly :: (Ord a, Fractional a) => NonEmpty (V2 a) -> V2 a -> [V2 a] -> [Triangle (V2 a)]
-triangulateXMonoUpOnly st s (ua : u) =
-    let (r, nst) = stackWindUp (ua <| st)
-    in triangulateXMonoUpOnly nst s u ++ r
-triangulateXMonoUpOnly st s [] = stackFlushUp s st
-
-triangulateXMonoDownOnly :: (Ord a, Fractional a) => NonEmpty (V2 a) -> V2 a -> [V2 a] -> [Triangle (V2 a)]
-triangulateXMonoDownOnly st s (ua : u) =
-    let (r, nst) = stackWindDown (ua <| st)
-    in triangulateXMonoDownOnly nst s u ++ r
-triangulateXMonoDownOnly st s [] = stackFlushDown s st
+triangulateXMonoDown _ mt accum = error "Not happening!"
 
 
-stackWindUp :: (Ord a, Fractional a) => NonEmpty (V2 a) -> ([Triangle (V2 a)], NonEmpty (V2 a))
-stackWindUp (a :| b : c : d)
-  | isConcave = ([], a :| b : c : d)
-  | otherwise = stackWindUp (a :| c : d) <* ([Triangle b a c], ())
+triangulateXMonoUpOnly :: (Ord a, Fractional a) => NonEmpty (V2 a) -> V2 a -> [V2 a] -> [Triangle (V2 a)] -> [Triangle (V2 a)]
+triangulateXMonoUpOnly st s (ua : u) accum =
+    let (naccum, nst) = stackWindUp (ua <| st) accum
+    in triangulateXMonoUpOnly nst s u naccum
+triangulateXMonoUpOnly st s [] accum = stackFlushUp s st accum
+
+triangulateXMonoDownOnly :: (Ord a, Fractional a) => NonEmpty (V2 a) -> V2 a -> [V2 a] -> [Triangle (V2 a)] -> [Triangle (V2 a)]
+triangulateXMonoDownOnly st s (ua : u) accum =
+    let (naccum, nst) = stackWindDown (ua <| st) accum
+    in triangulateXMonoDownOnly nst s u naccum
+triangulateXMonoDownOnly st s [] accum = stackFlushDown s st accum
+
+
+stackWindUp :: (Ord a, Fractional a) => NonEmpty (V2 a) -> [Triangle (V2 a)] -> ([Triangle (V2 a)], NonEmpty (V2 a))
+stackWindUp (a :| b : c : d) accum
+  | isConcave = (accum, a :| b : c : d)
+  | otherwise = let (naccum, nt) = stackWindUp (a :| c : d) accum in (Triangle b a c: naccum, nt)
   where
     V2 ax ay = a
     V2 bx by = b
     V2 cx cy = c
     isConcave = if bx == cx then by < cy else segYUp b c ax < ay 
-stackWindUp s = ([], s)
+stackWindUp s accum = (accum, s)
 
-stackWindDown :: (Ord a, Fractional a) => NonEmpty (V2 a) -> ([Triangle (V2 a)], NonEmpty (V2 a))
-stackWindDown (a :| b : c : d)
-  | isConcave = ([], a :| b : c : d)
-  | otherwise = stackWindDown (a :| c : d) <* ([Triangle b c a], ())
+stackWindDown :: (Ord a, Fractional a) => NonEmpty (V2 a) -> [Triangle (V2 a)] -> ([Triangle (V2 a)], NonEmpty (V2 a))
+stackWindDown (a :| b : c : d) accum
+  | isConcave = (accum, a :| b : c : d)
+  | otherwise = let (naccum, nt) = stackWindDown (a :| c : d) accum in (Triangle b c a: naccum, nt)
   where
     V2 ax ay = a
     V2 bx by = b
     V2 cx cy = c
     isConcave = if bx == cx then by > cy else segYDown b c ax > ay 
-stackWindDown s = ([], s)
+stackWindDown s accum = (accum, s)
 
-stackFlushUp :: V2 a -> NonEmpty (V2 a) -> [Triangle (V2 a)]
-stackFlushUp da (a :| b : c) = Triangle da b a : stackFlushUp da (b :| c)
-stackFlushUp _ (_ :| []) = []
+stackFlushUp :: V2 a -> NonEmpty (V2 a) -> [Triangle (V2 a)] -> [Triangle (V2 a)]
+stackFlushUp da (a :| b : c) accum = Triangle da b a : stackFlushUp da (b :| c) accum
+stackFlushUp _ (_ :| []) accum = accum
 
-stackFlushDown :: V2 a -> NonEmpty (V2 a) -> [Triangle (V2 a)]
-stackFlushDown ua (a :| b : c) = Triangle ua a b : stackFlushUp ua (b :| c)
-stackFlushDown _ (_ :| []) = []
+stackFlushDown :: V2 a -> NonEmpty (V2 a) -> [Triangle (V2 a)] -> [Triangle (V2 a)]
+stackFlushDown ua (a :| b : c) accum = Triangle ua a b : stackFlushUp ua (b :| c) accum
+stackFlushDown _ (_ :| []) accum = accum
