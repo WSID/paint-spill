@@ -46,6 +46,8 @@ test-suite test-paint-spill
       , linear
     exposed-modules:
         Test.Geom
+        Test.Geom.Util
+        Test.Geom.Monotone
     default-language: Haskell2010
 
 benchmark bench
