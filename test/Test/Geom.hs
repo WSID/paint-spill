@@ -6,6 +6,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Geom.Util
 import Test.Geom.Monotone
+import Test.Geom.Polygon
 
 import Linear
 
@@ -45,4 +46,5 @@ testGeom = testGroup "Geom"
           ]
       ]
   , testGroupMonotone
+  , testGroupPolygon
   ]

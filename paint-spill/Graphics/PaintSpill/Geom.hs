@@ -197,3 +197,27 @@ stackFlushUp _ (_ :| []) accum = accum
 stackFlushDown :: V2 a -> NonEmpty (V2 a) -> [Triangle (V2 a)] -> [Triangle (V2 a)]
 stackFlushDown ua (a :| b : c) accum = Triangle ua a b : stackFlushUp ua (b :| c) accum
 stackFlushDown _ (_ :| []) accum = accum
+
+
+-- Polygons
+
+polyElem :: (Ord a, Fractional a) => V2 a -> [V2 a] -> Bool
+polyElem e p = go e (polyToSegs p) 0
+  where
+    polyToSegs vs = zip vs (tail . cycle $ vs)
+
+    onVertical y a b
+      | a < b     = (a <= y) && (y <= b)
+      | otherwise = (b <= y) && (y <= a)
+
+    go v ((a, b) : s) n
+      | v == b    = True
+      | ax < bx   = go v s $ if (ax <= x) && (x < bx) && (segYUp a b x <= y) then n + 1 else n
+      | bx < ax   = go v s $ if (bx <= x) && (x < ax) && (segYDown a b x < y) then n + 1 else n
+      | ax == x   = onVertical y ay by || go v s n
+      | otherwise = go v s n
+      where
+        V2 x y = v
+        V2 ax ay = a
+        V2 bx by = b
+    go _ [] n = odd n
