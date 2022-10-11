@@ -10,23 +10,34 @@ import Data.Maybe
 import Control.DeepSeq
 import Linear
 
+-- | Get y coord of a point with x, on segment.
+--
+-- Assumes the segment is not vertical. If divide-by-zero is concern, then
+-- segYUp or segYDown can be used.
+segY :: (Ord a, Fractional a) => V2 a -> V2 a -> a -> a
+segY (V2 ax ay) (V2 bx by) x = (by - ay) / (bx - ax) * (x - ax) + ay
+
 -- | Get y coordinate of a segment.
+--
+-- On vertical segment, up point is returned.
 segYUp :: (Ord a, Fractional a) => V2 a -> V2 a -> a -> a
 segYUp a b x
   | ax == bx  = max ay by
-  | otherwise = (by - ay) / (bx - ax) * (x - ax) + ay
+  | otherwise = segY a b x
   where
     V2 ax ay = a
     V2 bx by = b
 
+-- | Get y coordinate of a segment.
+--
+-- On vertical segment, down point is returned.
 segYDown :: (Ord a, Fractional a) => V2 a -> V2 a -> a -> a
 segYDown a b x
   | ax == bx  = min ay by
-  | otherwise = (by - ay) / (bx - ax) * (x - ax) + ay
+  | otherwise = segY a b x
   where
     V2 ax ay = a
     V2 bx by = b
-
 
 
 -- | Get y coordinate of x-aligned strip
@@ -34,7 +45,7 @@ xstripYUp :: (Ord a, Fractional a) => V2 a -> [V2 a] -> V2 a -> a -> a
 xstripYUp end strip start x
   | ex < x     = ey
   | x < sx     = sy
-  | otherwise   = go end strip start
+  | otherwise  = go end strip start
   where
     V2 ex ey = end
     V2 sx sy = start
@@ -43,15 +54,15 @@ xstripYUp end strip start x
         let V2 ax ay = a
             V2 bx by = b
         in  case compare bx x of
-                LT -> segYUp b a x
-                EQ -> if ax == x then segYUp b a x else go b sn s
+                LT -> segY b a x
+                EQ -> if ax == x then max ay by else go b sn s
                 _ -> go b sn s
 
 xstripYDown :: (Ord a, Fractional a) => V2 a -> [V2 a] -> V2 a -> a -> a
 xstripYDown end strip start x
   | ex < x     = ey
   | x < sx     = sy
-  | otherwise   = go end strip start
+  | otherwise  = go end strip start
   where
     V2 ex ey = end
     V2 sx sy = start
@@ -60,8 +71,8 @@ xstripYDown end strip start x
         let V2 ax ay = a
             V2 bx by = b
         in  case compare bx x of
-                LT -> segYDown b a x
-                EQ -> if ax == x then segYDown b a x else go b sn s
+                LT -> segY b a x
+                EQ -> if ax == x then min ay by else go b sn s
                 _ -> go b sn s
 
 -- | A Triangle type.
@@ -71,7 +82,7 @@ xstripYDown end strip start x
 data Triangle a = Triangle a a a deriving (Eq, Functor, Foldable)
 
 instance NFData a => NFData (Triangle a) where
-    rnf (Triangle a b c) = rnf a `seq` rnf b `seq` rnf c `seq` ()
+    rnf (Triangle a b c) = rnf a `seq` rnf b `seq` rnf c
 
 -- | Membership check for triangle, as shape.
 triElem :: (Ord a, Fractional a) => Triangle (V2 a) -> V2 a -> Bool
@@ -86,7 +97,7 @@ triElem (Triangle a b c) e = (0 <= i) && (0 <= j) && (i + j <= 1)
 data XMonotone a = XMonotone a [a] [a] a
 
 instance NFData a => NFData (XMonotone a) where
-    rnf (XMonotone e u d s) = rnf e `seq` rnf u `seq` rnf d `seq` rnf s `seq` ()
+    rnf (XMonotone e u d s) = rnf e `seq` rnf u `seq` rnf d `seq` rnf s
 
 -- | Get Y range of a x monotone.
 xmonoY :: (Ord a, Fractional a) => XMonotone (V2 a) -> a -> (a, a)
@@ -212,8 +223,8 @@ polyElem e p = go e (polyToSegs p) 0
 
     go v ((a, b) : s) n
       | v == b    = True
-      | ax < bx   = go v s $ if (ax <= x) && (x < bx) && (segYUp a b x <= y) then n + 1 else n
-      | bx < ax   = go v s $ if (bx <= x) && (x < ax) && (segYDown a b x < y) then n + 1 else n
+      | ax < bx   = go v s $ if (ax <= x) && (x < bx) && (segY a b x <= y) then n + 1 else n
+      | bx < ax   = go v s $ if (bx <= x) && (x < ax) && (segY a b x < y) then n + 1 else n
       | ax == x   = onVertical y ay by || go v s n
       | otherwise = go v s n
       where
