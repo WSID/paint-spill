@@ -1,21 +1,25 @@
 module Bench.Geom where
 
+import Data.Maybe
+import Data.List.NonEmpty (nonEmpty, NonEmpty ((:|)))
+
 import Control.DeepSeq
 import Gauge
 
 import Linear
 import Graphics.PaintSpill.Geom
+import Graphics.PaintSpill.Util
 
 -- A fibonacci list to make numeric patterns.
 fibs = 1 : 1 : zipWith (+) fibs (tail fibs)
 
 monotoneSmall :: XMonotone (V2 Float)
-monotoneSmall = force (XMonotone (V2 1 0) [V2 0 1] [] (V2 0 0))
+monotoneSmall = force (XMonotone (V2 1 0) (Up (V2 0 1) :| []) (V2 0 0))
 
 monotoneTopOnlyN :: Int -> XMonotone (V2 Float)
-monotoneTopOnlyN n = XMonotone (V2 (fromIntegral n + 1) 0) u [] (V2 0 0)
+monotoneTopOnlyN n = XMonotone (V2 (fromIntegral n + 1) 0) (fromJust $ nonEmpty u) (V2 0 0)
   where
-    u = zipWith V2
+    u = fmap Up $ zipWith V2
         (fmap (\i -> fromIntegral (n - i + 1)) [1 .. n])
         (fmap (\f -> fromIntegral ((f `mod` 5) + 1)) fibs)
 
@@ -29,16 +33,11 @@ monotoneTopOnly512 :: XMonotone (V2 Float)
 monotoneTopOnly512 = force (monotoneTopOnlyN 512)
 
 monotoneBothN :: Int -> XMonotone (V2 Float)
-monotoneBothN n = XMonotone (V2 (fromIntegral n + 1) 3) u d (V2 0 3)
+monotoneBothN n = XMonotone (V2 (fromIntegral n + 1) 3) (fromJust $ nonEmpty v) (V2 0 3)
   where
-    v = zipWith V2
+    v = fmap (\p -> let V2 _ y = p in if y > 3 then Up p else Down p) $ zipWith V2
         (fmap (\i -> fromIntegral (n - i + 1)) [1 .. n])
         (fmap (\f -> fromIntegral ((f `mod` 6) + 1)) fibs)
-    splitter a b [] = (a, b)
-    splitter a b (V2 x y : c)
-        | 3 <= y    = splitter (V2 x y : a) b c
-        | otherwise = splitter a (V2 x y : b) c
-    (u, d) = splitter [] [] v
 
 monotoneBoth128 :: XMonotone (V2 Float)
 monotoneBoth128 = force (monotoneBothN 128)
