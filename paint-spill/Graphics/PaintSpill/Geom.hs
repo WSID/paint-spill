@@ -119,26 +119,30 @@ xmonoElem mt (V2 x y) = (sx <= x) && (x <= ex) && (l <= y) && (y <= h)
 
 -- | Triangulate Monotone
 
-triangulateXMono :: (Ord a, Fractional a) => XMonotone (V2 a) -> [Triangle (V2 a)]
+triangulateXMono :: (Ord a, Fractional a) => XMonotone (V2 a) -> NonEmpty (Triangle (V2 a))
 triangulateXMono m = triangulateXMonoGo m []
 
 
-triangulateXMonoDone :: V2 a -> DownUp (V2 a) -> V2 a -> [Triangle (V2 a)] -> [Triangle (V2 a)]
-triangulateXMonoDone e (Down d) s accum = Triangle s d e : accum
-triangulateXMonoDone e (Up u) s accum = Triangle s e u : accum
+triangulateXMonoDone :: V2 a -> DownUp (V2 a) -> V2 a -> [Triangle (V2 a)] -> NonEmpty (Triangle (V2 a))
+triangulateXMonoDone e (Down d) s accum = Triangle s d e :| accum
+triangulateXMonoDone e (Up u) s accum = Triangle s e u :| accum
 
 
-triangulateXMonoGo :: (Ord a, Fractional a) => XMonotone (V2 a) -> [Triangle (V2 a)] -> [Triangle (V2 a)]
+triangulateXMonoGo :: (Ord a, Fractional a) => XMonotone (V2 a) -> [Triangle (V2 a)] -> NonEmpty (Triangle (V2 a))
 triangulateXMonoGo (XMonotone e m s) accum = case N.uncons m of
   (ma,      Nothing) -> triangulateXMonoDone e ma s accum
   (Down d,  Just mn) -> triangulateXMonoDown (d :| [e]) (XMonotone e mn s) accum 
   (Up u,    Just mn) -> triangulateXMonoUp (u :| [e]) (XMonotone e mn s) accum
 
-triangulateXMonoUp :: (Ord a, Fractional a) => NonEmpty (V2 a) -> XMonotone (V2 a) -> [Triangle (V2 a)] -> [Triangle (V2 a)]
+triangulateXMonoUp :: (Ord a, Fractional a) => NonEmpty (V2 a) -> XMonotone (V2 a) -> [Triangle (V2 a)] -> NonEmpty (Triangle (V2 a))
 triangulateXMonoUp st (XMonotone e m s) accum = case ma of
   Down d -> 
       let sth :| _ = st
-      in triangulateXMonoGo (XMonotone sth m s) (stackFlushUp d st accum)
+          naccum = stackFlushUp d st accum
+      in maybe
+          (triangulateXMonoDone sth ma s naccum)
+          (\mn -> triangulateXMonoDown (d :| [sth]) (XMonotone sth mn s) naccum)
+          ms
   Up u -> 
       let (naccum, nst) = stackWindUp (u <| st) accum
       in maybe
@@ -148,7 +152,7 @@ triangulateXMonoUp st (XMonotone e m s) accum = case ma of
   where
     (ma, ms) = N.uncons m
 
-triangulateXMonoDown :: (Ord a, Fractional a) => NonEmpty (V2 a) -> XMonotone (V2 a) -> [Triangle (V2 a)] -> [Triangle (V2 a)]
+triangulateXMonoDown :: (Ord a, Fractional a) => NonEmpty (V2 a) -> XMonotone (V2 a) -> [Triangle (V2 a)] -> NonEmpty (Triangle (V2 a))
 triangulateXMonoDown st (XMonotone e m s) accum  = case ma of
   Down d -> 
       let (naccum, nst) = stackWindDown (d <| st) accum
@@ -158,7 +162,11 @@ triangulateXMonoDown st (XMonotone e m s) accum  = case ma of
           ms
   Up u ->
       let sth :| _ = st
-      in triangulateXMonoGo (XMonotone sth m s) (stackFlushDown u st accum)
+          naccum = stackFlushDown u st accum
+      in maybe
+          (triangulateXMonoDone sth ma s naccum)
+          (\mn -> triangulateXMonoUp (u :| [sth]) (XMonotone sth mn s) naccum)
+          ms
   where
     (ma, ms) = N.uncons m
 
