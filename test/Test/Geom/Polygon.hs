@@ -9,6 +9,8 @@ import Test.Geom.Util ( ccoordList, (@#=?) )
 import Linear
 
 import Graphics.PaintSpill.Geom
+import Graphics.PaintSpill.Geom.Monotone
+import Graphics.PaintSpill.Geom.Polygon
 
 
 testGroupPolygon :: TestTree

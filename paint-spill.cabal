@@ -31,6 +31,9 @@ library
     exposed-modules:
         Graphics.PaintSpill
       , Graphics.PaintSpill.Geom
+      , Graphics.PaintSpill.Geom.Monotone
+      , Graphics.PaintSpill.Geom.Triangle
+      , Graphics.PaintSpill.Geom.Polygon
       , Graphics.PaintSpill.Util
 
     default-language: Haskell2010

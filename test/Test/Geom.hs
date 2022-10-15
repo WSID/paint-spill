@@ -11,6 +11,7 @@ import Test.Geom.Polygon
 import Linear
 
 import Graphics.PaintSpill.Geom
+import Graphics.PaintSpill.Geom.Triangle
 
 
 testGeom :: TestTree

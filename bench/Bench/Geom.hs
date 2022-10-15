@@ -8,6 +8,8 @@ import Gauge
 
 import Linear
 import Graphics.PaintSpill.Geom
+import Graphics.PaintSpill.Geom.Monotone
+import Graphics.PaintSpill.Geom.Polygon
 import Graphics.PaintSpill.Util
 
 -- A fibonacci list to make numeric patterns.

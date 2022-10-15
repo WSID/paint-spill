@@ -11,8 +11,10 @@ import Test.Geom.Util
 
 import Linear
 
-import Graphics.PaintSpill.Geom
 import Graphics.PaintSpill.Util
+import Graphics.PaintSpill.Geom
+import Graphics.PaintSpill.Geom.Monotone
+import Graphics.PaintSpill.Geom.Triangle
 
 testGroupMonotone :: TestTree
 testGroupMonotone = testGroup "Monotone"
