@@ -5,6 +5,8 @@ import Data.List
 import Data.List.NonEmpty (NonEmpty (..), (<|))
 import qualified Data.List.NonEmpty as N
 
+import Control.DeepSeq
+
 import Linear.V2 (V2 (V2))
 
 import Graphics.PaintSpill.Util (DownUp(Down, Up))
@@ -42,6 +44,14 @@ data MonoMark a
     | MonoJoin a
     | MonoEnd a
     deriving (Show)
+
+instance (NFData a) => NFData (MonoMark a) where
+    rnf (MonoLeft a b) = rnf a `seq` rnf b
+    rnf (MonoRight a b) = rnf a `seq` rnf b
+    rnf (MonoStart a b c) = rnf a `seq` rnf b `seq` rnf c
+    rnf (MonoFork a b c) = rnf a `seq` rnf b `seq` rnf c
+    rnf (MonoJoin a) = rnf a
+    rnf (MonoEnd a) = rnf a
 
 data MonoTrack a
     = MonoTSingle a a a [DownUp a]

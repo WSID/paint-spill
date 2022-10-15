@@ -93,6 +93,15 @@ benchGeom = bgroup "Geom"
       , bench "Both 256" $ nf triangulateXMono monotoneBoth256
       , bench "Both 512" $ nf triangulateXMono monotoneBoth512
       ]
+  , bgroup "Make Sorted Marks"
+      [ bench "Small" $ nf makeSortedMarks polygonSmall
+      , bench "Polygon 128" $ nf makeSortedMarks polygon128
+      , bench "Polygon 256" $ nf makeSortedMarks polygon256
+      , bench "Polygon 512" $ nf makeSortedMarks polygon512
+      , bench "Spike 128" $ nf makeSortedMarks spike128
+      , bench "Spike 256" $ nf makeSortedMarks spike256
+      , bench "Spike 512" $ nf makeSortedMarks spike512
+      ]
   , bgroup "Monotone Decomp"
       [ bench "Small" $ nf monotoneDecomp polygonSmall
       , bench "Polygon 128" $ nf monotoneDecomp polygon128
