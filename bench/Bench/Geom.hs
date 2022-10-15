@@ -48,6 +48,38 @@ monotoneBoth256 = force (monotoneBothN 256)
 monotoneBoth512 :: XMonotone (V2 Float)
 monotoneBoth512 = force (monotoneBothN 512)
 
+
+polygonSmall :: [(Int, V2 Float)]
+polygonSmall = [(0, V2 0 0), (1, V2 1 0), (2, V2 0 1)]
+
+polygonN :: Int -> [(Int, V2 Float)]
+polygonN n = fmap func [1 .. n]
+  where 
+    func i = (i, angle (2 * pi * fromIntegral i / fromIntegral n))
+
+polygon128 :: [(Int, V2 Float)]
+polygon128 = force (polygonN 128)
+
+polygon256 :: [(Int, V2 Float)]
+polygon256 = force (polygonN 256)
+
+polygon512 :: [(Int, V2 Float)]
+polygon512 = force (polygonN 512)
+
+spikeN :: Int -> [(Int, V2 Float)]
+spikeN n = fmap func [1 .. n]
+  where 
+    func i = let s = if even i then 0.5 else 1.0 in (i, s *^ angle (2 * pi * fromIntegral i / fromIntegral n))
+
+spike128 :: [(Int, V2 Float)]
+spike128 = force (spikeN 128)
+
+spike256 :: [(Int, V2 Float)]
+spike256 = force (spikeN 256)
+
+spike512 :: [(Int, V2 Float)]
+spike512 = force (spikeN 512)
+
 benchGeom :: Benchmark
 benchGeom = bgroup "Geom"
   [ bgroup "Triangulate"
@@ -58,5 +90,14 @@ benchGeom = bgroup "Geom"
       , bench "Both 128" $ nf triangulateXMono monotoneBoth128
       , bench "Both 256" $ nf triangulateXMono monotoneBoth256
       , bench "Both 512" $ nf triangulateXMono monotoneBoth512
+      ]
+  , bgroup "Monotone Decomp"
+      [ bench "Small" $ nf monotoneDecomp polygonSmall
+      , bench "Polygon 128" $ nf monotoneDecomp polygon128
+      , bench "Polygon 256" $ nf monotoneDecomp polygon256
+      , bench "Polygon 512" $ nf monotoneDecomp polygon512
+      , bench "Spike 128" $ nf monotoneDecomp spike128
+      , bench "Spike 256" $ nf monotoneDecomp spike256
+      , bench "Spike 512" $ nf monotoneDecomp spike512
       ]
   ]
