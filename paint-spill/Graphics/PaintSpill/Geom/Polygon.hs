@@ -64,26 +64,29 @@ makeSortedMarks poly = marks
       where
         xcmp = compare ax bx
     
-    makeMonoMark (LT, a, b) (LT, _, c) = (b, MonoLeft b c)
-    makeMonoMark (GT, a, b) (GT, _, c) = (b, MonoRight b a)
-    makeMonoMark (LT, a, b) (GT, _, c)
+    makeMonoMark (LT, LT, a, b, c) = (b, MonoLeft b c)
+    makeMonoMark (GT, GT, a, b, c) = (b, MonoRight b a)
+    makeMonoMark (LT, GT, a, b, c)
       | ay < cy   = (b, MonoEnd b)
       | otherwise = (b, MonoJoin b)
       where
         (_, V2 _ ay) = a
         (_, V2 _ cy) = c
 
-    makeMonoMark (GT, a, b) (LT, _, c)
+    makeMonoMark (GT, LT, a, b, c)
       | ay < cy   = (b, MonoFork a b c)
       | otherwise = (b, MonoStart a b c)
       where
         (_, V2 _ ay) = a
         (_, V2 _ cy) = c
 
-    makeMonoMark _ _ = error "Not happening!"
+    makeMonoMark _ = error "Not happening!"
+  
+    pa = tail . cycle $ poly
+    pb = tail pa
 
-    segs = zipWith (\a b -> (cmpVerts a b, a, b)) poly (tail . cycle $ poly)
-    marksNotSorted = zipWith makeMonoMark segs (tail . cycle $ segs)
+    segs = zipWith3 (\a b c -> (cmpVerts a b, cmpVerts b c, a, b, c)) poly pa pb
+    marksNotSorted =  makeMonoMark <$> segs
     marks = snd <$> sortBy (cmpVerts `on` fst) marksNotSorted
 
 
@@ -94,15 +97,15 @@ monotoneDecomp poly = monotoneDecompGo (makeSortedMarks poly) [] []
 monotoneDecompGo :: (Eq i, Ord a) => [MonoMark (i, V2 a)] -> [MonoTrack (i, V2 a)] -> [XMonotone (i, V2 a)] -> [XMonotone (i, V2 a)]
 monotoneDecompGo [] [] accum = accum
 monotoneDecompGo [] _ accum = error "Not concluded tracks."
-monotoneDecompGo (m : ms) tracks accum = case m of
-  MonoStart a b c -> monotoneDecompGo ms (MonoTSingle c a b []: tracks) accum
-
-  MonoLeft b c -> let (ntracks, naccum) = monotoneDecompLeft b c tracks accum in monotoneDecompGo ms ntracks naccum
-  MonoRight b a -> let (ntracks, naccum) = monotoneDecompRight b a tracks accum in monotoneDecompGo ms ntracks naccum
-  MonoEnd b -> let (ntracks, naccum) = monotoneDecompEnd b tracks accum in monotoneDecompGo ms ntracks naccum
-  MonoFork a b c -> let (ntracks, naccum) = monotoneDecompFork a b c tracks accum in monotoneDecompGo ms ntracks naccum
-  MonoJoin a -> let (ntracks, naccum) = monotoneDecompJoin a tracks accum in monotoneDecompGo ms ntracks naccum
-  
+monotoneDecompGo (m : ms) tracks accum = 
+  let (ntracks, naccum) = case m of
+        MonoStart a b c -> (MonoTSingle c a b []: tracks, accum)
+        MonoLeft b c -> monotoneDecompLeft b c tracks accum
+        MonoRight b a -> monotoneDecompRight b a tracks accum
+        MonoEnd b -> monotoneDecompEnd b tracks accum
+        MonoFork a b c -> monotoneDecompFork a b c tracks accum
+        MonoJoin a -> monotoneDecompJoin a tracks accum
+  in monotoneDecompGo ms ntracks naccum
 
 monotoneDecompLeft :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> [MonoTrack (i, V2 a)] -> [XMonotone (i, V2 a)] -> ([MonoTrack (i, V2 a)], [XMonotone (i, V2 a)])
 monotoneDecompLeft (ai, av) b (t: ts) accum = case t of
@@ -172,28 +175,31 @@ monotoneDecompEnd _ [] _ = error "Matching track for End not found!"
 monotoneDecompFork :: (Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [MonoTrack (i, V2 a)] -> [XMonotone (i, V2 a)] -> ([MonoTrack (i, V2 a)], [XMonotone (i, V2 a)])
 monotoneDecompFork a b c (t: ts) accum = case t of
 
-  MonoTSingle (di, V2 dx dy) (ui, V2 ux uy) s st -> if (dy <= by) && (by <= uy)
+  MonoTSingle d u s st -> if (dy <= by) && (by <= uy)
     then case st of
       [] ->
-        ( MonoTSingle (di, V2 dx dy) a s [Up b]
-        : MonoTSingle c (ui, V2 ux uy) s [Down b]
+        ( MonoTSingle d a s [Up b]
+        : MonoTSingle c u s [Down b]
         : ts
         , accum
         )
       (Down hd: nst) ->
-        ( MonoTSingle (di, V2 dx dy) a hd [Up b]
-        : MonoTSingle c (ui, V2 ux uy) s (Down b : st)
+        ( MonoTSingle d a hd [Up b]
+        : MonoTSingle c u s (Down b : st)
         : ts
         , accum
         )
       (Up hu: nst) ->
-        ( MonoTSingle (di, V2 dx dy) a s (Up b : st)
-        : MonoTSingle c (ui, V2 ux uy) hu [Down b]
+        ( MonoTSingle d a s (Up b : st)
+        : MonoTSingle c u hu [Down b]
         : ts
         , accum
         )
     else
       let (nts, naccum) = monotoneDecompFork a (bi, V2 bx by)c ts accum in (t: nts, naccum)
+    where
+      (di, V2 dx dy) = d
+      (ui, V2 ux uy) = u
   
   MonoTFork (di, V2 dx dy) (ui, V2 ux uy) ds dst us ust -> if (dy <= by) && (by <= uy)
     then
@@ -213,16 +219,16 @@ monotoneDecompJoin :: (Eq i, Ord a) => (i, V2 a) -> [MonoTrack (i, V2 a)] -> [XM
 monotoneDecompJoin a (t: ts) accum = case t of
 
   MonoTSingle d u s st
-    | i == di   -> monotoneDecompJoinDown a d u s st ts accum
-    | i == ui   -> monotoneDecompJoinUp a d u s st ts accum
+    | i == di   -> monotoneDecompJoinDown a u s st ts accum
+    | i == ui   -> monotoneDecompJoinUp a d s st ts accum
     | otherwise -> let (nts, naccum) = monotoneDecompJoin a ts accum in (t: nts, naccum)
     where
       (di, V2 dx dy) = d
       (ui, V2 ux uy) = u
 
   MonoTFork d u ds dst us ust
-    | i == di   -> monotoneDecompJoinDown a d u us (N.toList ust) ts (XMonotone a dst ds : accum)
-    | i == ui   -> monotoneDecompJoinUp a d u ds (N.toList dst) ts (XMonotone a ust us : accum)
+    | i == di   -> monotoneDecompJoinDown a u us (N.toList ust) ts (XMonotone a dst ds : accum)
+    | i == ui   -> monotoneDecompJoinUp a d ds (N.toList dst) ts (XMonotone a ust us : accum)
     | otherwise -> let (nts, naccum) = monotoneDecompJoin a ts accum in (t: nts, naccum)
     where
       (di, V2 dx dy) = d
@@ -232,50 +238,50 @@ monotoneDecompJoin a (t: ts) accum = case t of
 
 monotoneDecompJoin _ [] _ = error "Matching track for Join, not found!"
 
-monotoneDecompJoinDown :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> [MonoTrack (i, V2 a)] -> [XMonotone (i, V2 a)] -> ([MonoTrack (i, V2 a)], [XMonotone (i, V2 a)])
-monotoneDecompJoinDown a ud uu us ust (t: ts) accum = case t of
+monotoneDecompJoinDown :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> [MonoTrack (i, V2 a)] -> [XMonotone (i, V2 a)] -> ([MonoTrack (i, V2 a)], [XMonotone (i, V2 a)])
+monotoneDecompJoinDown a uu us ust (t: ts) accum = case t of
   MonoTSingle d u s st -> if i == ui
     then
-      ( MonoTFork d uu s (Up u :| st) us (Down ud :| ust) : ts
+      ( MonoTFork d uu s (Up u :| st) us (Down a :| ust) : ts
       , accum
       )
     else
-      let (nts, naccum) = monotoneDecompJoinDown a ud uu us ust ts accum in (t: nts, naccum)
+      let (nts, naccum) = monotoneDecompJoinDown a uu us ust ts accum in (t: nts, naccum)
     where
       (ui, V2 ux uy) = u
   MonoTFork d u fds fdst fus fust -> if i == ui
     then
-      ( MonoTFork d uu fds (Up u <| fdst) us (Down ud :| ust) : ts
+      ( MonoTFork d uu fds (Up u <| fdst) us (Down a :| ust) : ts
       , XMonotone u fust fus : accum )
     else
-      let (nts, naccum) = monotoneDecompJoinDown a ud uu us ust ts accum in (t: nts, naccum)
+      let (nts, naccum) = monotoneDecompJoinDown a uu us ust ts accum in (t: nts, naccum)
     where
       (ui, V2 ux uy) = u
   where
     (i, V2 x y) = a
 
-monotoneDecompJoinDown _ _ _ _ _ [] _ = error "Matching down track for Join, not found!"
+monotoneDecompJoinDown _ _ _ _ [] _ = error "Matching down track for Join, not found!"
 
-monotoneDecompJoinUp :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> [MonoTrack (i, V2 a)] -> [XMonotone (i, V2 a)] -> ([MonoTrack (i, V2 a)], [XMonotone (i, V2 a)])
-monotoneDecompJoinUp a dd du ds dst (t: ts) accum = case t of
+monotoneDecompJoinUp :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> [MonoTrack (i, V2 a)] -> [XMonotone (i, V2 a)] -> ([MonoTrack (i, V2 a)], [XMonotone (i, V2 a)])
+monotoneDecompJoinUp a dd ds dst (t: ts) accum = case t of
   MonoTSingle d u s st -> if i == di
     then
-      ( MonoTFork dd u ds (Up du :| dst) s (Down d :| st) : ts
+      ( MonoTFork dd u ds (Up a :| dst) s (Down d :| st) : ts
       , accum
       )
     else
-      let (nts, naccum) = monotoneDecompJoinUp a dd du ds dst ts accum in (t: nts, naccum)
+      let (nts, naccum) = monotoneDecompJoinUp a dd ds dst ts accum in (t: nts, naccum)
     where
       (di, V2 dx dy) = d
   MonoTFork d u fds fdst fus fust -> if i == di
     then
-      ( MonoTFork dd u ds (Up du :| dst) fus (Down d <| fust) : ts
+      ( MonoTFork dd u ds (Up a :| dst) fus (Down d <| fust) : ts
       , XMonotone u fust fus : accum )
     else
-      let (nts, naccum) = monotoneDecompJoinUp a dd du ds dst ts accum in (t: nts, naccum)
+      let (nts, naccum) = monotoneDecompJoinUp a dd ds dst ts accum in (t: nts, naccum)
     where
       (di, V2 dx dy) = d
   where
     (i, V2 x y) = a
 
-monotoneDecompJoinUp _ _ _ _ _ [] _ = error "Matching up track for Join, not found!"
+monotoneDecompJoinUp _ _ _ _ [] _ = error "Matching up track for Join, not found!"
