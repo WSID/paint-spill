@@ -107,17 +107,16 @@ monotoneDecomp poly = monotoneDecompGo (makeSortedMarks poly) (MonotoneDecomp []
 
 
 monotoneDecompGo :: (Eq i, Ord a) => [MonoMark (i, V2 a)] -> MonotoneDecomp (i, V2 a) -> [XMonotone (i, V2 a)]
-monotoneDecompGo [] (MonotoneDecomp [] accum) = accum
-monotoneDecompGo [] (MonotoneDecomp _ accum) = error "Not concluded tracks."
-monotoneDecompGo (m : ms) md = 
-  let nmd = case m of
-        MonoStart a b c -> pushTrack (MonoTSingle c a b []) md
-        MonoLeft b c -> monotoneDecompLeft b c md
-        MonoRight b a -> monotoneDecompRight b a md
-        MonoEnd b -> monotoneDecompEnd b md
-        MonoFork a b c -> monotoneDecompFork a b c md
-        MonoJoin a -> monotoneDecompJoin a md
-  in monotoneDecompGo ms nmd
+monotoneDecompGo ms md = let MonotoneDecomp tracks accum = foldl (flip go) md ms in case tracks of
+  [] -> accum
+  _ -> error "Not concluded tracks."
+  where
+    go (MonoStart a b c) = pushTrack (MonoTSingle c a b [])
+    go (MonoLeft b c) = monotoneDecompLeft b c
+    go (MonoRight b a) = monotoneDecompRight b a
+    go (MonoEnd b) = monotoneDecompEnd b
+    go (MonoFork a b c) = monotoneDecompFork a b c
+    go (MonoJoin a) = monotoneDecompJoin a
 
 monotoneDecompLeft :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp (i, V2 a) -> MonotoneDecomp (i, V2 a)
 monotoneDecompLeft (ai, av) b md = case popTrack md of
