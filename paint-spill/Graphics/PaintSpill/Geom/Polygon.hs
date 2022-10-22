@@ -36,28 +36,28 @@ polyElem e p = go e segs 0
     go _ [] n = odd n
 
 
-data MonoMark a
-    = MonoLeft a a
-    | MonoRight a a
-    | MonoStart a a a 
-    | MonoFork a a a
-    | MonoJoin a
-    | MonoEnd a
+data MonoMark i a
+    = MonoLeft (i, V2 a) (i, V2 a)
+    | MonoRight (i, V2 a) (i, V2 a)
+    | MonoStart (i, V2 a) (i, V2 a) (i, V2 a) 
+    | MonoFork (i, V2 a) (i, V2 a) (i, V2 a)
+    | MonoJoin (i, V2 a)
+    | MonoEnd (i, V2 a)
     deriving (Show)
 
-instance (NFData a) => NFData (MonoMark a) where
-    rnf (MonoLeft a b) = rnf a `seq` rnf b
-    rnf (MonoRight a b) = rnf a `seq` rnf b
-    rnf (MonoStart a b c) = rnf a `seq` rnf b `seq` rnf c
-    rnf (MonoFork a b c) = rnf a `seq` rnf b `seq` rnf c
-    rnf (MonoJoin a) = rnf a
-    rnf (MonoEnd a) = rnf a
+instance (NFData i, NFData a) => NFData (MonoMark i a) where
+    rnf (MonoLeft (ai, av) (bi, bv)) = rnf ai `seq` rnf av `seq` rnf bi `seq` rnf bv
+    rnf (MonoRight (ai, av) (bi, bv)) = rnf ai `seq` rnf av `seq` rnf bi `seq` rnf bv
+    rnf (MonoStart (ai, av) (bi, bv) (ci, cv)) = rnf ai `seq` rnf av `seq` rnf bi `seq` rnf bv `seq` rnf ci `seq` rnf cv
+    rnf (MonoFork (ai, av) (bi, bv) (ci, cv)) = rnf ai `seq` rnf av `seq` rnf bi `seq` rnf bv `seq` rnf ci `seq` rnf cv
+    rnf (MonoJoin (ai, av)) = rnf ai `seq` rnf av
+    rnf (MonoEnd (ai, av)) = rnf ai `seq` rnf av
 
-data MonoTrack a
-    = MonoTSingle a a a [DownUp a]
-    | MonoTFork a a a (NonEmpty (DownUp a)) a (NonEmpty (DownUp a))
+data MonoTrack i a
+    = MonoTSingle (i, V2 a) (i, V2 a) (i, V2 a) [DownUp (i, V2 a)]
+    | MonoTFork (i, V2 a) (i, V2 a) (i, V2 a) (NonEmpty (DownUp (i, V2 a))) (i, V2 a) (NonEmpty (DownUp (i, V2 a)))
 
-makeSortedMarks :: (Ord a, Fractional a) => [(i, V2 a)] -> [MonoMark (i, V2 a)]
+makeSortedMarks :: (Ord a, Fractional a) => [(i, V2 a)] -> [MonoMark i a]
 makeSortedMarks poly = marks
   where
     cmpVerts (_, V2 ax ay) (_, V2 bx by) = if xcmp == EQ then compare ay by else xcmp
@@ -90,23 +90,23 @@ makeSortedMarks poly = marks
     marks = snd <$> sortBy (cmpVerts `on` fst) marksNotSorted
 
 
-data MonotoneDecomp a = MonotoneDecomp [MonoTrack a] [XMonotone a]
+data MonotoneDecomp i a = MonotoneDecomp [MonoTrack i a] [XMonotone i a]
 
-pushTrack :: MonoTrack a -> MonotoneDecomp a -> MonotoneDecomp a
+pushTrack :: MonoTrack i a -> MonotoneDecomp i a -> MonotoneDecomp i a
 pushTrack t (MonotoneDecomp ts ms) = MonotoneDecomp (t: ts) ms
 
-pushMonotone :: XMonotone a -> MonotoneDecomp a -> MonotoneDecomp a
+pushMonotone :: XMonotone i a -> MonotoneDecomp i a -> MonotoneDecomp i a
 pushMonotone m (MonotoneDecomp ts ms) = MonotoneDecomp ts (m: ms)
 
-popTrack :: MonotoneDecomp a -> Maybe (MonotoneDecomp a, MonoTrack a)
+popTrack :: MonotoneDecomp i a -> Maybe (MonotoneDecomp i a, MonoTrack i a)
 popTrack (MonotoneDecomp (t: ts) ms) = Just (MonotoneDecomp ts ms, t)
 popTrack _ = Nothing 
 
-monotoneDecomp :: (Eq i, Ord a, Fractional a) => [(i, V2 a)] -> [XMonotone (i, V2 a)]
+monotoneDecomp :: (Eq i, Ord a, Fractional a) => [(i, V2 a)] -> [XMonotone i a]
 monotoneDecomp poly = monotoneDecompGo (makeSortedMarks poly) (MonotoneDecomp [] [])
 
 
-monotoneDecompGo :: (Eq i, Ord a) => [MonoMark (i, V2 a)] -> MonotoneDecomp (i, V2 a) -> [XMonotone (i, V2 a)]
+monotoneDecompGo :: (Eq i, Ord a) => [MonoMark i a] -> MonotoneDecomp i a -> [XMonotone i a]
 monotoneDecompGo ms md = let MonotoneDecomp tracks accum = foldl (flip go) md ms in case tracks of
   [] -> accum
   _ -> error "Not concluded tracks."
@@ -118,7 +118,7 @@ monotoneDecompGo ms md = let MonotoneDecomp tracks accum = foldl (flip go) md ms
     go (MonoFork a b c) = monotoneDecompFork a b c
     go (MonoJoin a) = monotoneDecompJoin a
 
-monotoneDecompLeft :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp (i, V2 a) -> MonotoneDecomp (i, V2 a)
+monotoneDecompLeft :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompLeft (ai, av) b md = case popTrack md of
   Just (nmd, t) -> case t of
     MonoTSingle (di, dv) u s st -> if ai == di
@@ -134,7 +134,7 @@ monotoneDecompLeft (ai, av) b md = case popTrack md of
   Nothing -> error "Matching not found!"
 
 
-monotoneDecompRight :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp (i, V2 a) -> MonotoneDecomp (i, V2 a)
+monotoneDecompRight :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompRight (ai, av) b md = case popTrack md of
   Just (nmd, t) -> case t of
     MonoTSingle d (ui, uv) s st -> if ai == ui
@@ -150,7 +150,7 @@ monotoneDecompRight (ai, av) b md = case popTrack md of
   Nothing -> error "Matching not found!"
 
 
-monotoneDecompEnd :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp (i, V2 a) -> MonotoneDecomp (i, V2 a)
+monotoneDecompEnd :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompEnd (bi, bv) md = case popTrack md of
   Just (nmd, t) -> case t of
     MonoTSingle (di, V2 dx dy) (ui, V2 ux uy) s st -> if bi == di
@@ -177,7 +177,7 @@ monotoneDecompEnd (bi, bv) md = case popTrack md of
   Nothing -> error "Matching track for End not found!"
 
 
-monotoneDecompFork :: (Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> MonotoneDecomp (i, V2 a) -> MonotoneDecomp (i, V2 a)
+monotoneDecompFork :: (Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompFork a b c md = case popTrack md of
   Just (nmd, t) -> case t of
 
@@ -209,7 +209,7 @@ monotoneDecompFork a b c md = case popTrack md of
 
   Nothing ->  error "Suitable track for Fork, not found!"
 
-monotoneDecompJoin :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp (i, V2 a) -> MonotoneDecomp (i, V2 a)
+monotoneDecompJoin :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompJoin a md = case popTrack md of
   Just (nmd, t) -> case t of
 
@@ -233,7 +233,7 @@ monotoneDecompJoin a md = case popTrack md of
 
   Nothing -> error "Matching track for Join, not found!"
 
-monotoneDecompJoinDown :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp (i, V2 a) -> MonotoneDecomp (i, V2 a)
+monotoneDecompJoinDown :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompJoinDown a uu us ust md = case popTrack md of
   Just (nmd, t) -> case t of
     MonoTSingle d u s st -> if i == ui
@@ -253,7 +253,7 @@ monotoneDecompJoinDown a uu us ust md = case popTrack md of
 
   Nothing -> error "Matching down track for Join, not found!"
 
-monotoneDecompJoinUp :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp (i, V2 a) -> MonotoneDecomp (i, V2 a)
+monotoneDecompJoinUp :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompJoinUp a dd ds dst md = case popTrack md of
   Just (nmd, t) -> case t of
     MonoTSingle d u s st -> if i == di

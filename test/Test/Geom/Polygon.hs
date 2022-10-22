@@ -50,7 +50,7 @@ testGroupPolygon = testGroup "Polygon"
   , testGroup "Monotone Decomposition"
       [ testCase "Triangle" $ do
             let poly = [V2 0 0, V2 1 0, V2 0 1]
-                monos = fmap (fmap snd) $ monotoneDecomp (zip [ 0 .. ] poly)
+                monos = monotoneDecomp (zip [ 0 .. ] poly) 
             
                 polyMap = flip polyElem poly <$> ccoordList
                 monoMaps = fmap (\m -> fmap (xmonoElem m) ccoordList) monos
@@ -64,7 +64,7 @@ testGroupPolygon = testGroup "Polygon"
             
       , testCase "Vase shaped" $ do
             let poly = [V2 0 0, V2 3 0, V2 2 1, V2 3 2, V2 0 2, V2 1 1]
-                monos = fmap (fmap snd) $ monotoneDecomp (zip [ 0 .. ] poly)
+                monos = monotoneDecomp (zip [ 0 .. ] poly)
             
                 polyMap = flip polyElem poly <$> ccoordList
                 monoMaps = fmap (\m -> fmap (xmonoElem m) ccoordList) monos
@@ -78,7 +78,7 @@ testGroupPolygon = testGroup "Polygon"
             
       , testCase "Clover" $ do
             let poly = [V2 0 0, V2 1 0, V2 2 1, V2 3 0, V2 4 0, V2 4 1, V2 3 2, V2 4 3, V2 4 4, V2 3 4, V2 2 3, V2 1 4, V2 0 4, V2 0 3, V2 1 2, V2 0 1]
-                monos = fmap (fmap snd) $ monotoneDecomp (zip [ 0 .. ] poly)
+                monos = monotoneDecomp (zip [ 0 .. ] poly)
             
                 polyMap = flip polyElem poly <$> ccoordList
                 monoMaps = fmap (\m -> fmap (xmonoElem m) ccoordList) monos
@@ -94,7 +94,7 @@ testGroupPolygon = testGroup "Polygon"
             
       , testCase "ZigZags" $ do
             let poly = [V2 0 0, V2 2 0, V2 4 1, V2 2 2, V2 4 3, V2 2 4, V2 4 5, V2 2 6, V2 4 7, V2 2 7, V2 0 6, V2 2 5, V2 0 4, V2 2 3, V2 0 2, V2 2 1]
-                monos = fmap (fmap snd) $ monotoneDecomp (zip [ 0 .. ] poly)
+                monos = monotoneDecomp (zip [ 0 .. ] poly)
             
                 polyMap = flip polyElem poly <$> ccoordList
                 monoMaps = fmap (\m -> fmap (xmonoElem m) ccoordList) monos
@@ -110,7 +110,7 @@ testGroupPolygon = testGroup "Polygon"
             
       , testCase "ZigZags 2" $ do
             let poly = [V2 0 0, V2 3 0, V2 5 1, V2 3 2, V2 5 3, V2 3 4, V2 5 5, V2 3 6, V2 5 7, V2 2 7, V2 0 6, V2 2 5, V2 0 4, V2 2 3, V2 0 2, V2 2 1]
-                monos = fmap (fmap snd) $ monotoneDecomp (zip [ 0 .. ] poly)
+                monos = monotoneDecomp (zip [ 0 .. ] poly)
             
                 polyMap = flip polyElem poly <$> ccoordList
                 monoMaps = fmap (\m -> fmap (xmonoElem m) ccoordList) monos
@@ -126,7 +126,7 @@ testGroupPolygon = testGroup "Polygon"
             
       , testCase "Swirl Shape" $ do
             let poly = [V2 0 0, V2 2 0, V2 3 2, V2 4 0, V2 4 2, V2 2 3, V2 4 4, V2 2 4, V2 1 2, V2 0 4, V2 0 2, V2 2 1]
-                monos = fmap (fmap snd) $ monotoneDecomp (zip [ 0 .. ] poly)
+                monos = monotoneDecomp (zip [ 0 .. ] poly)
             
                 polyMap = flip polyElem poly <$> ccoordList
                 monoMaps = fmap (\m -> fmap (xmonoElem m) ccoordList) monos

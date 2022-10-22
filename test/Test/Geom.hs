@@ -19,15 +19,15 @@ testGeom = testGroup "Geom"
   [ testGroup "Triangles"
       [ testGroup "triElem"
           [ testCase "Simple" $ do
-                let triangle = Triangle (V2 0 0) (V2 1 0) (V2 0 1)
+                let triangle = unindexedTriangle (V2 0 0) (V2 1 0) (V2 0 1)
                 triElem triangle (V2 0.25 0.25) @?= True
                 triElem triangle (V2 1.0 1.0) @?= False
           , testCase "Triangle" $ do
-                let triangle = Triangle (V2 0 0) (V2 1 0) (V2 0.5 0.8)
+                let triangle = unindexedTriangle (V2 0 0) (V2 1 0) (V2 0.5 0.8)
                 triElem triangle (V2 0.5 0.5) @?= True 
                 triElem triangle (V2 0 1) @?= False
           , testCase "Any Triangle" $ do
-                let triangle = Triangle (V2 0 1) (V2 1 0) (V2 2 2)
+                let triangle = unindexedTriangle (V2 0 1) (V2 1 0) (V2 2 2)
                 triElem triangle (V2 1 1) @?= True 
                 triElem triangle (V2 0 0) @?= False
           ]

@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE OverloadedLists #-} -- Construct NonEmpty
+{-# LANGUAGE TupleSections #-} -- Construct function to tuples
 
 module Test.Geom.Monotone where
 
@@ -58,25 +59,25 @@ testGroupMonotone = testGroup "Monotone"
 
   , testGroup "xmonoY"
       [ testCase "Triangle" $ do
-            let monotone = XMonotone (V2 1 0) [Up (V2 0 1)] (V2 0 0)
+            let monotone = unindexedXMonotone (V2 1 0) [Up (V2 0 1)] (V2 0 0)
             xmonoY monotone 0 @?= (0, 1)
             xmonoY monotone 1 @?= (0, 0)
       , testCase "Simple" $ do
-            let monotone = XMonotone (V2 1 0) [Up (V2 0 1), Down (V2 0 (-1))] (V2 (-1) 0)
+            let monotone = unindexedXMonotone (V2 1 0) [Up (V2 0 1), Down (V2 0 (-1))] (V2 (-1) 0)
             xmonoY monotone 0 @?= ((-1), 1)
             xmonoY monotone 0.5 @?= ((-0.5), 0.5)
       , testCase "End Point" $ do
-            let monotone = XMonotone (V2 1 0) [Up (V2 0 1), Down (V2 0 (-1))] (V2 (-1) 0)
+            let monotone = unindexedXMonotone (V2 1 0) [Up (V2 0 1), Down (V2 0 (-1))] (V2 (-1) 0)
             xmonoY monotone 1 @?= (0, 0)
             xmonoY monotone (-1) @?= (0, 0)
       , testCase "Vertical" $ do
-            let monotone = XMonotone
+            let monotone = unindexedXMonotone
                     (V2 1 2)
                     [Up (V2 0 2), Up (V2 0 3), Down (V2 0 0), Down (V2 0 1)]
                     (V2 (-1) 2)
             xmonoY monotone 0 @?= (0, 3)
       , testCase "More" $ do
-            let monotone = XMonotone
+            let monotone = unindexedXMonotone
                     (V2 3 2)
                     [Up (V2 2 4), Down (V2 1 0), Down (V2 0 0), Up (V2 (-1) 1), Down (V2 (-1) (-2))]
                     (V2 (-2) (-2))
@@ -87,7 +88,7 @@ testGroupMonotone = testGroup "Monotone"
 
   , testGroup "monoElem"
       [ testCase "Simple" $ do
-            let monotone = XMonotone (V2 1 0) [Up (V2 0 1), Down (V2 0 (-1))] (V2 (-1) 0)
+            let monotone = unindexedXMonotone (V2 1 0) [Up (V2 0 1), Down (V2 0 (-1))] (V2 (-1) 0)
             --  1 |    *
             --  0 |  * x *
             -- -1 |  x *
@@ -95,7 +96,7 @@ testGroupMonotone = testGroup "Monotone"
             xmonoElem monotone (V2 (-1) (-1)) @?= False
             xmonoElem monotone (V2 3 0) @?= False
       , testCase "More" $ do
-            let monotone = XMonotone
+            let monotone = unindexedXMonotone
                     (V2 3 2)
                     [Up (V2 2 4), Down (V2 1 0), Down (V2 0 0), Up (V2 (-1) 1), Down (V2 (-1) (-2))]
                     (V2 (-2) (-2))
@@ -117,7 +118,7 @@ testGroupMonotone = testGroup "Monotone"
 
   , testGroup "triangulateMonotone"
       [ testCase "Triangle" $ do
-            let monotone = XMonotone (V2 1 0) [Up (V2 0 1)] (V2 0 0)
+            let monotone = unindexedXMonotone (V2 1 0) [Up (V2 0 1)] (V2 0 0)
                 triangles = triangulateXMono monotone
 
                 monoMap = xmonoElem monotone <$> ccoordList
@@ -127,7 +128,7 @@ testGroupMonotone = testGroup "Monotone"
             monoMap @#=? triMap
 
       , testCase "Triangle Low" $ do
-            let monotone = XMonotone (V2 1 0) [Down (V2 0 (-1))] (V2 0 0)
+            let monotone = unindexedXMonotone (V2 1 0) [Down (V2 0 (-1))] (V2 0 0)
                 triangles = triangulateXMono monotone
 
                 monoMap = xmonoElem monotone <$> ccoordList
@@ -137,7 +138,7 @@ testGroupMonotone = testGroup "Monotone"
             monoMap @#=? triMap
 
       , testCase "Upside Zigs" $ do
-            let monotone = XMonotone (V2 3 0) [Up (V2 2 2), Up (V2 1 1), Up (V2 (-1) 2), Up (V2 (-2) 2)] (V2 (-3) 0)
+            let monotone = unindexedXMonotone (V2 3 0) [Up (V2 2 2), Up (V2 1 1), Up (V2 (-1) 2), Up (V2 (-2) 2)] (V2 (-3) 0)
                 triangles = triangulateXMono monotone
 
                 monoMap = xmonoElem monotone <$> ccoordList
@@ -147,7 +148,7 @@ testGroupMonotone = testGroup "Monotone"
             monoMap @#=? triMap
     
       , testCase "Downside Zigs" $ do
-            let monotone = XMonotone (V2 3 3) [Down (V2 2 1), Down (V2 1 2), Down (V2 (-1) 1), Down (V2 (-2) 1)] (V2 (-3) 3)
+            let monotone = unindexedXMonotone (V2 3 3) [Down (V2 2 1), Down (V2 1 2), Down (V2 (-1) 1), Down (V2 (-2) 1)] (V2 (-3) 3)
                 triangles = triangulateXMono monotone
 
                 monoMap = xmonoElem monotone <$> ccoordList
@@ -157,7 +158,7 @@ testGroupMonotone = testGroup "Monotone"
             monoMap @#=? triMap
 
       , testCase "Upside Zigs 1" $ do
-            let monotone = XMonotone
+            let monotone = unindexedXMonotone
                     (V2 3 0)
                     [Up (V2 2 2), Up (V2 1 1), Down (V2 0 (-1)), Up (V2 (-1) 2), Up (V2 (-2) 2)]
                     (V2 (-3) 0)
@@ -170,7 +171,7 @@ testGroupMonotone = testGroup "Monotone"
             monoMap @#=? triMap
     
       , testCase "Downside Zigs 1" $ do
-            let monotone = XMonotone
+            let monotone = unindexedXMonotone
                     (V2 3 3)
                     [Down (V2 2 1), Down (V2 1 2), Up (V2 0 4), Down (V2 (-1) 1), Down (V2 (-2) 1)]
                     (V2 (-3) 3)
@@ -183,7 +184,7 @@ testGroupMonotone = testGroup "Monotone"
             monoMap @#=? triMap
 
       , testCase "Simple" $ do
-            let monotone = XMonotone
+            let monotone = unindexedXMonotone
                     (V2 1 0)
                     [Up (V2 0 1), Down (V2 0 (-1))]
                     (V2 (-1) 0)
@@ -196,7 +197,7 @@ testGroupMonotone = testGroup "Monotone"
             monoMap @#=? triMap
 
       , testCase "Vertical" $ do
-            let monotone = XMonotone
+            let monotone = unindexedXMonotone
                     (V2 1 2)
                     [Up (V2 0 2), Up (V2 0 3), Down (V2 0 0), Down (V2 0 1)]
                     (V2 (-1) 2)
@@ -209,7 +210,7 @@ testGroupMonotone = testGroup "Monotone"
             monoMap @#=? triMap
 
       , testCase "More" $ do
-            let monotone = XMonotone
+            let monotone = unindexedXMonotone
                     (V2 3 2)
                     [Up (V2 2 4), Down (V2 1 0), Down (V2 0 0), Up (V2 (-1) 1), Down (V2 (-1) (-2))]
                     (V2 (-2) (-2))
