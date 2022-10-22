@@ -1,7 +1,9 @@
 module Bench.Geom where
 
+import Data.Foldable
 import Data.Maybe
 import Data.List.NonEmpty (nonEmpty, NonEmpty ((:|)))
+import qualified Data.List.NonEmpty as N
 
 import Control.DeepSeq
 import Gauge
@@ -10,6 +12,7 @@ import Linear
 import Graphics.PaintSpill.Geom
 import Graphics.PaintSpill.Geom.Monotone
 import Graphics.PaintSpill.Geom.Polygon
+import Graphics.PaintSpill.Geom.Triangle
 import Graphics.PaintSpill.Util
 
 -- A fibonacci list to make numeric patterns.
@@ -82,6 +85,10 @@ spike256 = force (spikeN 256)
 spike512 :: [(Int, V2 Float)]
 spike512 = force (spikeN 512)
 
+
+polygonToTriangles :: [(Int, V2 Float)] -> [Triangle Int Float]
+polygonToTriangles poly = fold ((N.toList . triangulateXMono) <$> monotoneDecomp poly)
+
 benchGeom :: Benchmark
 benchGeom = bgroup "Geom"
   [ bgroup "Triangulate"
@@ -110,5 +117,14 @@ benchGeom = bgroup "Geom"
       , bench "Spike 128" $ nf monotoneDecomp spike128
       , bench "Spike 256" $ nf monotoneDecomp spike256
       , bench "Spike 512" $ nf monotoneDecomp spike512
+      ]
+  , bgroup "Polygon to Triangle"
+      [ bench "Small" $ nf polygonToTriangles polygonSmall
+      , bench "Polygon 128" $ nf polygonToTriangles polygon128
+      , bench "Polygon 256" $ nf polygonToTriangles polygon256
+      , bench "Polygon 512" $ nf polygonToTriangles polygon512
+      , bench "Spike 128" $ nf polygonToTriangles spike128
+      , bench "Spike 256" $ nf polygonToTriangles spike256
+      , bench "Spike 512" $ nf polygonToTriangles spike512
       ]
   ]
