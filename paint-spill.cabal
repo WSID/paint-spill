@@ -24,7 +24,7 @@ extra-source-files: CHANGELOG.md
 library
     hs-source-dirs:   paint-spill
     build-depends:
-      , base ^>=4.14.3.0
+      , base
       , mtl
       , deepseq
       , linear
@@ -43,7 +43,7 @@ test-suite test-paint-spill
     main-is:          Main.hs
     hs-source-dirs:   test
     build-depends:
-        base ^>=4.14.3.0
+        base
       , tasty
       , tasty-hunit
       , paint-spill
@@ -60,7 +60,7 @@ benchmark bench
     main-is:          Main.hs
     hs-source-dirs:   bench
     build-depends:
-        base ^>=4.14.3.0
+        base
       , deepseq
       , gauge
       , linear
