@@ -13,11 +13,15 @@ import Graphics.PaintSpill.Util (DownUp(Down, Up))
 import Graphics.PaintSpill.Geom
 import Graphics.PaintSpill.Geom.Monotone
 
+cmpVerts :: (Ord a) => (i, V2 a) -> (i, V2 a) -> Ordering
+cmpVerts (_, V2 ax ay) (_, V2 bx by) = if xcmp == EQ then compare ay by else xcmp
+  where
+    xcmp = compare ax bx
 
-polyElem :: (Ord a, Fractional a) => V2 a -> [V2 a] -> Bool
+polyElem :: (Ord a, Fractional a) => V2 a -> [[V2 a]] -> Bool
 polyElem e p = go e segs 0
   where
-    segs = zip p (tail . cycle $ p)
+    segs = foldMap (\s -> zip s (tail . cycle $ s)) p
 
     onVertical y a b
       | a < b     = (a <= y) && (y <= b)
@@ -57,13 +61,9 @@ data MonoTrack i a
     = MonoTSingle (i, V2 a) (i, V2 a) (i, V2 a) [DownUp (i, V2 a)]
     | MonoTFork (i, V2 a) (i, V2 a) (i, V2 a) (NonEmpty (DownUp (i, V2 a))) (i, V2 a) (NonEmpty (DownUp (i, V2 a)))
 
-makeSortedMarks :: (Ord a, Fractional a) => [(i, V2 a)] -> [MonoMark i a]
-makeSortedMarks poly = marks
+makeMonoMarks :: (Ord a) => [(i, V2 a)] -> [((i, V2 a), MonoMark i a)]
+makeMonoMarks winding = marks
   where
-    cmpVerts (_, V2 ax ay) (_, V2 bx by) = if xcmp == EQ then compare ay by else xcmp
-      where
-        xcmp = compare ax bx
-    
     makeMonoMark (LT, LT, a, b, c) = (b, MonoLeft b c)
     makeMonoMark (GT, GT, a, b, c) = (b, MonoRight b a)
     makeMonoMark (LT, GT, a, b, c)
@@ -79,14 +79,18 @@ makeSortedMarks poly = marks
       where
         (_, V2 _ ay) = a
         (_, V2 _ cy) = c
-
-    makeMonoMark _ = error "Not happening!"
-  
-    pa = tail . cycle $ poly
+    
+    pa = tail . cycle $ winding
     pb = tail pa
 
-    segs = zipWith3 (\a b c -> (cmpVerts a b, cmpVerts b c, a, b, c)) poly pa pb
-    marksNotSorted =  makeMonoMark <$> segs
+    segs = zipWith3 (\a b c -> (cmpVerts a b, cmpVerts b c, a, b, c)) winding pa pb
+    marks = makeMonoMark <$> segs
+
+
+makeSortedMarks :: (Ord a, Fractional a) => [[(i, V2 a)]] -> [MonoMark i a]
+makeSortedMarks poly = marks
+  where
+    marksNotSorted =  foldMap makeMonoMarks poly
     marks = snd <$> sortBy (cmpVerts `on` fst) marksNotSorted
 
 
@@ -102,7 +106,7 @@ popTrack :: MonotoneDecomp i a -> Maybe (MonotoneDecomp i a, MonoTrack i a)
 popTrack (MonotoneDecomp (t: ts) ms) = Just (MonotoneDecomp ts ms, t)
 popTrack _ = Nothing 
 
-monotoneDecomp :: (Eq i, Ord a, Fractional a) => [(i, V2 a)] -> [XMonotone i a]
+monotoneDecomp :: (Eq i, Ord a, Fractional a) => [[(i, V2 a)]] -> [XMonotone i a]
 monotoneDecomp poly = monotoneDecompGo (makeSortedMarks poly) (MonotoneDecomp [] [])
 
 
