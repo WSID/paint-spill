@@ -1,5 +1,7 @@
 module Graphics.PaintSpill.Geom.Polygon where
 
+import Control.Applicative
+import Data.Maybe
 import Data.Function
 import Data.List
 import Data.List.NonEmpty (NonEmpty (..), (<|))
@@ -13,32 +15,76 @@ import Graphics.PaintSpill.Util (DownUp(Down, Up))
 import Graphics.PaintSpill.Geom
 import Graphics.PaintSpill.Geom.Monotone
 
+cmpPtrs :: (Ord a) => V2 a -> V2 a -> Ordering
+cmpPtrs (V2 ax ay) (V2 bx by) = case compare ax bx of
+  EQ -> compare ay by
+  cmp -> cmp
+
 cmpVerts :: (Ord a) => (i, V2 a) -> (i, V2 a) -> Ordering
-cmpVerts (_, V2 ax ay) (_, V2 bx by) = if xcmp == EQ then compare ay by else xcmp
+cmpVerts = compare `on` snd
+
+polyElemE :: (Ord a, Fractional a, Enum e) => e -> (e -> Bool) -> V2 a -> [[V2 a]] -> Bool
+polyElemE start func point poly = or (func <$> [fmin .. fmax])
   where
-    xcmp = compare ax bx
+    segify strips = zip4 strips (drop 1 sc) (drop 2 sc) (drop 3 sc)
+      where
+        sc = cycle strips
+    
+    segs = foldMap segify poly
 
-polyElem :: (Ord a, Fractional a) => V2 a -> [[V2 a]] -> Bool
-polyElem e p = go e segs 0
-  where
-    segs = foldMap (\s -> zip s (tail . cycle $ s)) p
-
-    onVertical y a b
-      | a < b     = (a <= y) && (y <= b)
-      | otherwise = (b <= y) && (y <= a)
-
-    go v ((a, b) : s) n
-      | v == b    = True
-      | ax < bx   = go v s $ if (ax <= x) && (x < bx) && (segY a b x <= y) then n + 1 else n
-      | bx < ax   = go v s $ if (bx <= x) && (x < ax) && (segY a b x < y) then n + 1 else n
-      | ax == x   = onVertical y ay by || go v s n
-      | otherwise = go v s n
+    step v sls (fmin, fmax)
+      | bx < cx = stepRight
+      | cx < bx = stepLeft
+      | by < cy = stepUp
+      | cy < by = stepDown
       where
         V2 x y = v
-        V2 ax ay = a
-        V2 bx by = b
-    go _ [] n = odd n
+        (_, b, c, _) = sls
+        (V2 ax ay, V2 bx by, V2 cx cy, V2 dx dy) = sls
 
+        stepRight
+          | ((bx < x) && (x < cx)) || ((cx == x) && (cx < dx))
+          = case compare y (segY b c x) of
+              LT -> (pred fmin, pred fmax)
+              EQ -> (pred fmin, fmax)
+              GT -> (fmin, fmax)
+          | (cx == x) && (dx < cx)  = if y == cy then (pred fmin, fmax) else (fmin, fmax)
+          | otherwise               = (fmin, fmax)
+
+        stepLeft
+          | ((cx < x) && (x < bx)) || ((cx == x) && (dx < cx))
+          = case compare y (segY b c x) of
+              LT -> (succ fmin, succ fmax)
+              EQ -> (fmin, succ fmax)
+              GT -> (fmin, fmax)
+          | (cx == x) && (cx < dx)  = if y == cy then (fmin, succ fmax) else (fmin, fmax)
+          | otherwise               = (fmin, fmax)
+        
+        stepUp
+          | (x == bx) && (by <= y) && (y <= cy) = case compare dx cx of
+              LT -> (fmin, succ fmax)
+              EQ -> (fmin, fmax)
+              GT -> (pred fmin, fmax)
+          | otherwise = (fmin, fmax)
+        
+        stepDown
+          | (x == bx) && (cy <= y) && (y <= by) = case compare ax bx of
+              LT -> (pred fmin, fmax)
+              EQ -> (fmin, fmax)
+              GT -> (fmin, succ fmax)
+          | otherwise = (fmin, fmax)
+
+    (fmin, fmax) = foldr (step point) (start, start) segs
+
+
+polyElemI :: (Ord a, Fractional a) => (Int -> Bool) -> V2 a -> [[V2 a]] -> Bool
+polyElemI func = polyElemE 0 func
+
+polyElemEvenOdd :: (Ord a, Fractional a) => V2 a -> [[V2 a]] -> Bool
+polyElemEvenOdd = polyElemI odd
+
+polyElemNonZero :: (Ord a, Fractional a) => V2 a -> [[V2 a]] -> Bool
+polyElemNonZero = polyElemI (/= 0)
 
 data MonoMark i a
     = MonoLeft (i, V2 a) (i, V2 a)
