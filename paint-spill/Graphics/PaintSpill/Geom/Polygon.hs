@@ -89,23 +89,51 @@ polyElemNonZero = polyElemI (/= 0)
 data MonoMark i a
     = MonoLeft (i, V2 a) (i, V2 a)
     | MonoRight (i, V2 a) (i, V2 a)
-    | MonoStart (i, V2 a) (i, V2 a) (i, V2 a) 
-    | MonoFork (i, V2 a) (i, V2 a) (i, V2 a)
-    | MonoJoin (i, V2 a)
-    | MonoEnd (i, V2 a)
+    | MonoSNeg (i, V2 a) (i, V2 a) (i, V2 a)
+    | MonoSPos (i, V2 a) (i, V2 a) (i, V2 a) 
+    | MonoENeg (i, V2 a)
+    | MonoEPos (i, V2 a)
     deriving (Show)
 
 instance (NFData i, NFData a) => NFData (MonoMark i a) where
     rnf (MonoLeft (ai, av) (bi, bv)) = rnf ai `seq` rnf av `seq` rnf bi `seq` rnf bv
     rnf (MonoRight (ai, av) (bi, bv)) = rnf ai `seq` rnf av `seq` rnf bi `seq` rnf bv
-    rnf (MonoStart (ai, av) (bi, bv) (ci, cv)) = rnf ai `seq` rnf av `seq` rnf bi `seq` rnf bv `seq` rnf ci `seq` rnf cv
-    rnf (MonoFork (ai, av) (bi, bv) (ci, cv)) = rnf ai `seq` rnf av `seq` rnf bi `seq` rnf bv `seq` rnf ci `seq` rnf cv
-    rnf (MonoJoin (ai, av)) = rnf ai `seq` rnf av
-    rnf (MonoEnd (ai, av)) = rnf ai `seq` rnf av
+    rnf (MonoSNeg (ai, av) (bi, bv) (ci, cv)) = rnf ai `seq` rnf av `seq` rnf bi `seq` rnf bv `seq` rnf ci `seq` rnf cv
+    rnf (MonoSPos (ai, av) (bi, bv) (ci, cv)) = rnf ai `seq` rnf av `seq` rnf bi `seq` rnf bv `seq` rnf ci `seq` rnf cv
+    rnf (MonoENeg (ai, av)) = rnf ai `seq` rnf av
+    rnf (MonoEPos (ai, av)) = rnf ai `seq` rnf av
 
-data MonoTrack i a
-    = MonoTSingle (i, V2 a) (i, V2 a) (i, V2 a) [DownUp (i, V2 a)]
-    | MonoTFork (i, V2 a) (i, V2 a) (i, V2 a) (NonEmpty (DownUp (i, V2 a))) (i, V2 a) (NonEmpty (DownUp (i, V2 a)))
+data TrackDir = TrackLeft | TrackRight deriving (Eq, Show)
+
+-- TODO: Lint up track data.
+data MonoTrack e i a = MonoTrack
+    { monoTrackOverlaps :: e
+    , monoTrackOutline :: Bool
+    , monoTrackDown :: MonoSegTrack i a
+    , monoTrackUp :: MonoSegTrack i a
+    , monoTrackStrip :: MonoTrackStrips i a
+    }
+    deriving Show
+
+data MonoSegTrack i a = MonoSegTrack
+    { monoSegTrackDir :: TrackDir
+    , monoSegTrackPrev :: (i, V2 a)
+    , monoSegTrackCurr :: (i, V2 a)
+    }
+    deriving Show
+
+data MonoTrackStrips i a
+    = MonoStripSingle
+    { monoSingleStart :: (i, V2 a)
+    , monoSingleStrip :: [DownUp (i, V2 a)]
+    }
+    | MonoStripFork
+    { monoForkDownStart :: (i, V2 a)
+    , monoForkDownStrip :: NonEmpty (DownUp (i, V2 a))
+    , monoForkUpStart :: (i, V2 a)
+    , monoForkUpStrip :: NonEmpty (DownUp (i, V2 a))
+    }
+    deriving Show 
 
 makeMonoMarks :: (Ord a) => [(i, V2 a)] -> [((i, V2 a), MonoMark i a)]
 makeMonoMarks winding = marks
@@ -113,15 +141,15 @@ makeMonoMarks winding = marks
     makeMonoMark (LT, LT, a, b, c) = (b, MonoLeft b c)
     makeMonoMark (GT, GT, a, b, c) = (b, MonoRight b a)
     makeMonoMark (LT, GT, a, b, c)
-      | ay < cy   = (b, MonoEnd b)
-      | otherwise = (b, MonoJoin b)
+      | ay < cy   = (b, MonoEPos b)
+      | otherwise = (b, MonoENeg b)
       where
         (_, V2 _ ay) = a
         (_, V2 _ cy) = c
 
     makeMonoMark (GT, LT, a, b, c)
-      | ay < cy   = (b, MonoFork a b c)
-      | otherwise = (b, MonoStart a b c)
+      | ay < cy   = (b, MonoSNeg a b c)
+      | otherwise = (b, MonoSPos a b c)
       where
         (_, V2 _ ay) = a
         (_, V2 _ cy) = c
@@ -140,185 +168,241 @@ makeSortedMarks poly = marks
     marks = snd <$> sortBy (cmpVerts `on` fst) marksNotSorted
 
 
-data MonotoneDecomp i a = MonotoneDecomp [MonoTrack i a] [XMonotone i a]
+matchSegTrackLeft :: (Eq i) => (i, V2 a) -> (i, V2 a) -> MonoSegTrack i a -> Maybe ((i, V2 a), MonoSegTrack i a)
+matchSegTrackLeft _ _ (MonoSegTrack TrackRight _ _) = Nothing
+matchSegTrackLeft a b (MonoSegTrack TrackLeft prev curr)
+  | i == ai   = Just (curr, MonoSegTrack TrackLeft curr b)
+  | otherwise = Nothing
+  where
+    i = fst curr
+    ai = fst a
 
-pushTrack :: MonoTrack i a -> MonotoneDecomp i a -> MonotoneDecomp i a
-pushTrack t (MonotoneDecomp ts ms) = MonotoneDecomp (t: ts) ms
+matchSegTrackRight :: (Eq i) => (i, V2 a) -> (i, V2 a) -> MonoSegTrack i a -> Maybe ((i, V2 a), MonoSegTrack i a)
+matchSegTrackRight _ _ (MonoSegTrack TrackLeft _ _) = Nothing
+matchSegTrackRight a b (MonoSegTrack TrackRight prev curr)
+  | i == ai   = Just (curr, MonoSegTrack TrackRight curr b)
+  | otherwise = Nothing
+  where
+    i = fst curr
+    ai = fst a
 
-pushMonotone :: XMonotone i a -> MonotoneDecomp i a -> MonotoneDecomp i a
-pushMonotone m (MonotoneDecomp ts ms) = MonotoneDecomp ts (m: ms)
+isSegTrackVertical :: (Ord a) => MonoSegTrack i a -> Bool
+isSegTrackVertical (MonoSegTrack _ (_, V2 px _) (_, V2 cx _)) = px == cx
 
-popTrack :: MonotoneDecomp i a -> Maybe (MonotoneDecomp i a, MonoTrack i a)
-popTrack (MonotoneDecomp (t: ts) ms) = Just (MonotoneDecomp ts ms, t)
+segYSegTrack :: (Ord a, Fractional a) => MonoSegTrack i a -> a -> a
+segYSegTrack (MonoSegTrack _ (_, pv) (_, cv)) x = segY pv cv x 
+
+data MonotoneDecomp e i a = MonotoneDecomp e (e -> Bool) [MonoTrack e i a] [XMonotone i a]
+
+pushTrack :: MonoTrack e i a -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+pushTrack t (MonotoneDecomp start fill ts ms) = MonotoneDecomp start fill (t: ts) ms
+
+pushMonotone :: XMonotone i a -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+pushMonotone m (MonotoneDecomp start fill ts ms) = MonotoneDecomp start fill ts (m: ms)
+
+popTrack :: MonotoneDecomp e i a -> Maybe (MonotoneDecomp e i a, MonoTrack e i a)
+popTrack (MonotoneDecomp start fill (t: ts) ms) = Just (MonotoneDecomp start fill ts ms, t)
 popTrack _ = Nothing 
 
-monotoneDecomp :: (Eq i, Ord a, Fractional a) => [[(i, V2 a)]] -> [XMonotone i a]
-monotoneDecomp poly = monotoneDecompGo (makeSortedMarks poly) (MonotoneDecomp [] [])
 
+monotoneDecompE :: (Enum e, Eq i, Ord a, Fractional a, Show e, Show i, Show a) => e -> (e -> Bool) -> [[(i, V2 a)]] -> [XMonotone i a]
+monotoneDecompE start fill poly = monotoneDecompGo start fill (makeSortedMarks poly) (MonotoneDecomp start fill [] [])
 
-monotoneDecompGo :: (Eq i, Ord a) => [MonoMark i a] -> MonotoneDecomp i a -> [XMonotone i a]
-monotoneDecompGo ms md = let MonotoneDecomp tracks accum = foldl (flip go) md ms in case tracks of
+monotoneDecompI :: (Eq i, Ord a, Fractional a, Show i, Show a) => (Int -> Bool) -> [[(i, V2 a)]] -> [XMonotone i a]
+monotoneDecompI = monotoneDecompE 0
+
+monotoneDecompNonZero :: (Eq i, Ord a, Fractional a, Show i, Show a) => [[(i, V2 a)]] -> [XMonotone i a]
+monotoneDecompNonZero = monotoneDecompI (/= 0)
+
+monotoneDecompEvenOdd :: (Eq i, Ord a, Fractional a, Show i, Show a) => [[(i, V2 a)]] -> [XMonotone i a]
+monotoneDecompEvenOdd = monotoneDecompI odd
+
+monotoneDecompGo :: (Enum e, Eq i, Ord a, Fractional a, Show e, Show i, Show a) => e -> (e -> Bool) -> [MonoMark i a] -> MonotoneDecomp e i a -> [XMonotone i a]
+monotoneDecompGo start fill ms md = let MonotoneDecomp start fill tracks accum = foldl (flip go) md ms in case tracks of
   [] -> accum
   _ -> error "Not concluded tracks."
   where
-    go (MonoStart a b c) = pushTrack (MonoTSingle c a b [])
+    go (MonoSPos a b c) = pushTrack MonoTrack
+        { monoTrackOverlaps = (succ start)
+        , monoTrackOutline = (fill start /= fill (succ start))
+        , monoTrackDown = MonoSegTrack TrackLeft b c
+        , monoTrackUp = MonoSegTrack TrackRight b a
+        , monoTrackStrip = MonoStripSingle b []
+        }
     go (MonoLeft b c) = monotoneDecompLeft b c
     go (MonoRight b a) = monotoneDecompRight b a
-    go (MonoEnd b) = monotoneDecompEnd b
-    go (MonoFork a b c) = monotoneDecompFork a b c
-    go (MonoJoin a) = monotoneDecompJoin a
+    go (MonoEPos b) = monotoneDecompEPos b
+    go (MonoSNeg a b c) = monotoneDecompSNeg a b c
+    go (MonoENeg a) = monotoneDecompENeg a
 
-monotoneDecompLeft :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
+monotoneDecompLeft :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp e i a -> MonotoneDecomp e i a
 monotoneDecompLeft (ai, av) b md = case popTrack md of
-  Just (nmd, t) -> case t of
-    MonoTSingle (di, dv) u s st -> if ai == di
-      then pushTrack (MonoTSingle b u s (Down (di, dv) : st)) nmd
-      else pushTrack t $ monotoneDecompLeft (ai, av) b nmd
+  Just (nmd, t)
+    | dd == TrackLeft && di == ai -> case ts of
+        MonoStripSingle s st        -> nmd
+          & pushTrack t {monoTrackDown = MonoSegTrack TrackLeft d b, monoTrackStrip = MonoStripSingle s (Down d : st)}
+        MonoStripFork ds dst us ust -> nmd
+          & pushTrack t {monoTrackDown = MonoSegTrack TrackLeft d b, monoTrackStrip = MonoStripSingle us (Down d : N.toList ust)}
+          & if inc then pushMonotone (XMonotone d dst ds) else id
 
-    MonoTFork (di, dv) u ds dst us ust -> if ai == di
-      then nmd
-        & pushTrack (MonoTSingle b u us (Down (di, dv) : N.toList ust)) 
-        & pushMonotone (XMonotone (di, dv) dst ds) 
-      else pushTrack t $ monotoneDecompLeft (ai, av) b nmd
+    | ud == TrackLeft && ui == ai -> case ts of
+        MonoStripSingle s st        -> nmd
+          & pushTrack t {monoTrackUp = MonoSegTrack TrackLeft u b, monoTrackStrip = MonoStripSingle s (Up u : st)}
+        MonoStripFork ds dst us ust -> nmd
+          & pushTrack t {monoTrackUp = MonoSegTrack TrackLeft u b, monoTrackStrip = MonoStripSingle ds (Up u : N.toList dst)}
+          & if inc then pushMonotone (XMonotone u ust us) else id
 
-  Nothing -> error "Matching not found!"
+    | otherwise -> pushTrack t $ monotoneDecompLeft (ai, av) b nmd
+    where
+      MonoTrack _ inc (MonoSegTrack dd _ d) (MonoSegTrack ud _ u) ts = t
+      (di, dv) = d
+      (ui, uv) = u
+
+  Nothing -> error "Matching for left mark, not found!"
 
 
-monotoneDecompRight :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
+monotoneDecompRight :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp e i a -> MonotoneDecomp e i a
 monotoneDecompRight (ai, av) b md = case popTrack md of
-  Just (nmd, t) -> case t of
-    MonoTSingle d (ui, uv) s st -> if ai == ui
-      then pushTrack (MonoTSingle d b s (Up (ui, uv) : st)) nmd
-      else pushTrack t $ monotoneDecompRight (ai, av) b nmd
+  Just (nmd, t)
+    | dd == TrackRight && di == ai -> case ts of
+        MonoStripSingle s st        -> nmd
+          & pushTrack t {monoTrackDown = MonoSegTrack TrackRight d b, monoTrackStrip = MonoStripSingle s (Down d : st)}
+        MonoStripFork ds dst us ust -> nmd
+          & pushTrack t {monoTrackDown = MonoSegTrack TrackRight d b, monoTrackStrip = MonoStripSingle us (Down d : N.toList ust)}
+          & if inc then pushMonotone (XMonotone d dst ds) else id
 
-    MonoTFork d (ui, uv) ds dst us ust -> if ai == ui
-      then nmd
-        & pushTrack ( MonoTSingle d b ds (Up (ui, uv) : N.toList dst) )
-        & pushMonotone ( XMonotone (ui, uv) ust us )
-      else pushTrack t $ monotoneDecompRight (ai, av) b nmd
+    | ud == TrackRight && ui == ai -> case ts of
+        MonoStripSingle s st        -> nmd
+          & pushTrack t {monoTrackUp = MonoSegTrack TrackRight u b, monoTrackStrip = MonoStripSingle s (Up u : st)}
+        MonoStripFork ds dst us ust -> nmd
+          & pushTrack t {monoTrackUp = MonoSegTrack TrackRight u b, monoTrackStrip = MonoStripSingle ds (Up u : N.toList dst)}
+          & if inc then pushMonotone (XMonotone u ust us) else id
 
-  Nothing -> error "Matching not found!"
+    | otherwise -> pushTrack t $ monotoneDecompRight (ai, av) b nmd
+    where
+      MonoTrack _ inc (MonoSegTrack dd _ d) (MonoSegTrack ud _ u) ts = t
+      (di, dv) = d
+      (ui, uv) = u
+
+  Nothing -> error "Matching for right mark, not found!"
 
 
-monotoneDecompEnd :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
-monotoneDecompEnd (bi, bv) md = case popTrack md of
-  Just (nmd, t) -> case t of
-    MonoTSingle (di, V2 dx dy) (ui, V2 ux uy) s st -> if bi == di
-      then if bi == ui
-        then case st of
-          (sth : stn) -> pushMonotone (XMonotone (bi, bv) (sth :| stn) s) nmd
-          [] -> error "A monotone with 2 vertices!"
-        else
-          error "Partial matching track for end: downside is matching."
-      else if bi == ui
-        then error "Partial matching track for end: upside is matching."
-        else pushTrack t $ monotoneDecompEnd (bi, bv) nmd
+monotoneDecompEPos :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompEPos b md = case popTrack md of
+  Just (nmd, t)
+    | dd == TrackLeft && ud == TrackRight && di == bi && ui == bi -> case ts of
+        MonoStripSingle s (sth : stn) -> if inc then pushMonotone (XMonotone b (sth :| stn) s) nmd else nmd
+        MonoStripFork ds dst us ust -> if inc then nmd
+          & pushMonotone (XMonotone b (Up u <| ust) us)
+          & pushMonotone (XMonotone b (Down d <| dst) ds)
+        else nmd
+    | otherwise -> pushTrack t $ monotoneDecompEPos b nmd
+    where
+      MonoTrack _ inc (MonoSegTrack dd _ d) (MonoSegTrack ud _ u) ts = t
+      (bi, bv) = b
+      (di, dv) = d
+      (ui, uv) = u
 
-    MonoTFork (di, V2 dx dy) (ui, V2 ux uy) ds dst us ust -> if bi == di
-      then if bi == ui
-        then nmd
-          & pushMonotone (XMonotone (bi, bv) (Up (ui, V2 ux uy) <| ust) us)
-          & pushMonotone (XMonotone (bi, bv) (Down (di, V2 dx dy) <| dst) ds)
-        else
-          error "Partial matching track for end: downside is matching."
-      else if bi == ui
-        then error "Partial matching track for end: upside is matching."
-        else pushTrack t $ monotoneDecompEnd (bi, bv) nmd
   Nothing -> error "Matching track for End not found!"
 
 
-monotoneDecompFork :: (Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
-monotoneDecompFork a b c md = case popTrack md of
-  Just (nmd, t) -> case t of
-
-    MonoTSingle d u s st -> if (dy <= by) && (by <= uy)
-      then case st of
-        [] -> nmd
-          & pushTrack (MonoTSingle c u s [Down b])
-          & pushTrack (MonoTSingle d a s [Up b])
-        (Down hd: nst) -> nmd
-          & pushTrack (MonoTSingle c u s (Down b : st))
-          & pushTrack ( MonoTSingle d a hd [Up b] )
-        (Up hu: nst) -> nmd
-          & pushTrack (MonoTSingle c u hu [Down b])
-          & pushTrack (MonoTSingle d a s (Up b : st))
-      else
-        pushTrack t $ monotoneDecompFork a (bi, V2 bx by) c nmd
-      where
-        (di, V2 dx dy) = d
-        (ui, V2 ux uy) = u
-    
-    MonoTFork (di, V2 dx dy) (ui, V2 ux uy) ds dst us ust -> if (dy <= by) && (by <= uy)
-      then nmd
-        & pushTrack (MonoTSingle c (ui, V2 ux uy) us (Down b : N.toList ust))
-        & pushTrack (MonoTSingle (di, V2 dx dy) a ds (Up b : N.toList dst))
-      else
-        pushTrack t $ monotoneDecompFork a (bi, V2 bx by) c nmd
+monotoneDecompSNeg :: (Enum e, Ord a, Fractional a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompSNeg a b c md = case popTrack md of
+  Just (nmd, t)
+    | (dy <= by) && (by <= uy) -> case ts of
+        MonoStripSingle s st -> case st of
+          [] -> nmd
+            & pushTrack t {monoTrackDown = MonoSegTrack TrackLeft b c, monoTrackStrip = MonoStripSingle s [Down b]}
+            & pushTrack t {monoTrackUp = MonoSegTrack TrackRight b a, monoTrackStrip = MonoStripSingle s [Up b]}
+            -- pushTrack (MonoTrack ne nout ...)
+          (Down hd: nst) -> nmd
+            & pushTrack t {monoTrackDown = MonoSegTrack TrackLeft b c, monoTrackStrip = MonoStripSingle s (Down b: st)}
+            & pushTrack t {monoTrackUp = MonoSegTrack TrackRight b a, monoTrackStrip = MonoStripSingle hd [Up b]}
+          (Up hu: nst) -> nmd
+            & pushTrack t {monoTrackDown = MonoSegTrack TrackLeft b c, monoTrackStrip = MonoStripSingle hu [Down b]}
+            & pushTrack t {monoTrackUp = MonoSegTrack TrackRight b a, monoTrackStrip = MonoStripSingle s (Up b: st)}
+        MonoStripFork ds dst us ust -> nmd
+          & pushTrack t {monoTrackDown = MonoSegTrack TrackLeft b c, monoTrackUp = u, monoTrackStrip = MonoStripSingle us (Down b: N.toList ust)}
+          & pushTrack t {monoTrackDown = d, monoTrackUp = MonoSegTrack TrackRight b a, monoTrackStrip = MonoStripSingle ds (Up b: N.toList dst)}
+          where
+            --ne = pred n
+            --nout = (fill e) /= (fill ne)
+    | otherwise -> pushTrack t $ monotoneDecompSNeg a b c nmd
     where
+      MonoTrack _ inc d u ts = t
       (bi, V2 bx by) = b
+      MonoSegTrack dd _ dc = d
+      MonoSegTrack ud _ uc = u
+      dy = if isSegTrackVertical d then let (_, V2 _ cy) = dc in cy else segYSegTrack d bx
+      uy = if isSegTrackVertical u then let (_, V2 _ cy) = uc in cy else segYSegTrack u bx
 
-  Nothing ->  error "Suitable track for Fork, not found!"
+  Nothing -> pushTrack
+      MonoTrack
+        { monoTrackOverlaps = pred start
+        , monoTrackOutline = not (fill start) && fill (pred start)
+        , monoTrackDown = MonoSegTrack TrackRight b a
+        , monoTrackUp = MonoSegTrack TrackLeft b c
+        , monoTrackStrip = MonoStripSingle b []
+        }
+      md
+  where
+    MonotoneDecomp start fill _ _ = md
 
-monotoneDecompJoin :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
-monotoneDecompJoin a md = case popTrack md of
-  Just (nmd, t) -> case t of
+monotoneDecompENeg :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompENeg a md = case popTrack md of
+  Just (nmd, t)
+    | i == di && i == ui && dd == TrackRight && ud == TrackLeft -> case ts of
+        MonoStripSingle s (sth : stn) -> if inc then pushMonotone (XMonotone a (sth :| stn) s) nmd else nmd
+        MonoStripFork ds dst us ust -> if inc then nmd
+          & pushMonotone (XMonotone a (Up u <| ust) us)
+          & pushMonotone (XMonotone a (Down d <| dst) ds)
+        else nmd
 
-    MonoTSingle d u s st
-      | i == di   -> monotoneDecompJoinDown a u s st nmd
-      | i == ui   -> monotoneDecompJoinUp a d s st nmd
-      | otherwise -> pushTrack t $ monotoneDecompJoin a nmd
-      where
-        (di, V2 dx dy) = d
-        (ui, V2 ux uy) = u
+    | i == di -> case ts of
+        MonoStripSingle s st -> monotoneDecompENegDown a u s st nmd
+        MonoStripFork ds dst us ust -> monotoneDecompENegDown a u us (N.toList ust) (pushMonotone (XMonotone a dst ds) nmd)
 
-    MonoTFork d u ds dst us ust
-      | i == di   -> monotoneDecompJoinDown a u us (N.toList ust) (pushMonotone (XMonotone a dst ds) nmd)
-      | i == ui   -> monotoneDecompJoinUp a d ds (N.toList dst) (pushMonotone (XMonotone a ust us) nmd)
-      | otherwise -> pushTrack t $ monotoneDecompJoin a nmd
-      where
-        (di, V2 dx dy) = d
-        (ui, V2 ux uy) = u
+    | i == ui -> case ts of
+        MonoStripSingle s st -> monotoneDecompENegUp a d s st nmd
+        MonoStripFork ds dst us ust -> monotoneDecompENegUp a d ds (N.toList dst) (pushMonotone (XMonotone a ust us) nmd)
+    | otherwise -> pushTrack t $ monotoneDecompENeg a nmd
     where
+      MonotoneDecomp start fill _ _ = md
+      MonoTrack _ inc (MonoSegTrack dd _ d) (MonoSegTrack ud _ u) ts = t
       (i, V2 x y) = a
+      (di, V2 dx dy) = d
+      (ui, V2 ux uy) = u
 
   Nothing -> error "Matching track for Join, not found!"
 
-monotoneDecompJoinDown :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp i a -> MonotoneDecomp i a
-monotoneDecompJoinDown a uu us ust md = case popTrack md of
-  Just (nmd, t) -> case t of
-    MonoTSingle d u s st -> if i == ui
-      then pushTrack (MonoTFork d uu s (Up u :| st) us (Down a :| ust)) nmd
-      else pushTrack t $ monotoneDecompJoinDown a uu us ust nmd
-      where
-        (ui, V2 ux uy) = u
-    MonoTFork d u fds fdst fus fust -> if i == ui
-      then nmd
-        & pushTrack (MonoTFork d uu fds (Up u <| fdst) us (Down a :| ust))
-        & pushMonotone (XMonotone u fust fus)
-      else pushTrack t $ monotoneDecompJoinDown a uu us ust nmd
-      where
-        (ui, V2 ux uy) = u
+monotoneDecompENegDown :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompENegDown a pu us ust md = case popTrack md of
+  Just (nmd, t)
+    | i == ui -> case ts of
+        MonoStripSingle s st -> pushTrack t {monoTrackUp = MonoSegTrack ud u pu, monoTrackStrip = MonoStripFork s (Up u :| st) us (Down a :| ust)} nmd
+        MonoStripFork fds fdst fus fust -> nmd
+          & pushTrack t {monoTrackUp = MonoSegTrack ud u pu, monoTrackStrip = MonoStripFork fds (Up u <| fdst) us (Down a :| ust)}
+          & pushMonotone (XMonotone u fust fus)
+    | otherwise -> pushTrack t $ monotoneDecompENegDown a pu us ust nmd
     where
+      MonoTrack _ inc (MonoSegTrack dd _ d) (MonoSegTrack ud _ u) ts = t
+      (ui, V2 ux uy) = u
       (i, V2 x y) = a
 
   Nothing -> error "Matching down track for Join, not found!"
 
-monotoneDecompJoinUp :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp i a -> MonotoneDecomp i a
-monotoneDecompJoinUp a dd ds dst md = case popTrack md of
-  Just (nmd, t) -> case t of
-    MonoTSingle d u s st -> if i == di
-      then pushTrack (MonoTFork dd u ds (Up a :| dst) s (Down d :| st)) nmd
-      else pushTrack t $ monotoneDecompJoinUp a dd ds dst nmd
-      where
-        (di, V2 dx dy) = d
-    MonoTFork d u fds fdst fus fust -> if i == di
-      then nmd
-        & pushTrack (MonoTFork dd u ds (Up a :| dst) fus (Down d <| fust))
-        & pushMonotone (XMonotone u fust fus)
-      else pushTrack t $ monotoneDecompJoinUp a dd ds dst nmd
-      where
-        (di, V2 dx dy) = d
+monotoneDecompENegUp :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompENegUp a pd ds dst md = case popTrack md of
+  Just (nmd, t)
+    | i == di -> case ts of
+        MonoStripSingle s st -> pushTrack t {monoTrackDown = MonoSegTrack dd d pd, monoTrackStrip = MonoStripFork ds (Up a :| dst) s (Down d :| st)} nmd
+        MonoStripFork fds fdst fus fust -> nmd
+          & pushTrack t {monoTrackDown = MonoSegTrack dd d pd, monoTrackStrip = MonoStripFork ds (Up a :| dst) fus (Down d <| fust)}
+          & pushMonotone (XMonotone u fust fus)
+    | otherwise -> pushTrack t $ monotoneDecompENegUp a pd ds dst nmd
     where
+      MonoTrack _ inc (MonoSegTrack dd _ d) (MonoSegTrack ud _ u) ts = t
+      (di, V2 dx dy) = d
       (i, V2 x y) = a
 
   Nothing -> error "Matching up track for Join, not found!"
