@@ -45,6 +45,16 @@ testGeom = testGroup "Geom"
               , testCase "D" (segYDown (V2 0 0) (V2 0 2) 0 @?= 0)
               ]
           ]
+      , testGroup "segIntersect"
+          [ testCase "Vertical Parallel" (segIntersect (V2 0 0) (V2 0 1) (V2 1 0) (V2 1 1) @?= Nothing)
+          , testCase "Horizontal Parallel" (segIntersect (V2 0 0) (V2 1 0) (V2 0 1) (V2 1 1) @?= Nothing)
+          , testCase "Diagonal Parallel" (segIntersect (V2 0 0) (V2 1 1) (V2 1 0) (V2 2 1) @?= Nothing)
+          , testCase "X cross" (segIntersect (V2 0 0) (V2 1 1) (V2 0 1) (V2 1 0) @?= Just (V2 0.5 0.5))
+          , testCase "A" (segIntersect (V2 0 0) (V2 1 4) (V2 0 3) (V2 1 3) @?= Just (V2 0.75 3))
+          , testCase "B" (segIntersect (V2 0 0) (V2 2 3) (V2 3 2) (V2 0 0) @?= Just (V2 0 0))
+          , testCase "Vertical 1" (segIntersect (V2 0 1) (V2 2 3) (V2 1 0) (V2 1 4) @?= Just (V2 1 2))
+          , testCase "Vertical 2" (segIntersect (V2 2 0) (V2 2 4) (V2 1 0) (V2 3 4) @?= Just (V2 2 2))
+          ]
       ]
   , testGroupMonotone
   , testGroupPolygon

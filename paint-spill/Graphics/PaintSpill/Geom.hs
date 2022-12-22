@@ -70,3 +70,27 @@ xstripYDown end strip start x
                 LT -> segY b a x
                 EQ -> if ax == x then min ay by else go b sn s
                 _ -> go b sn s
+
+
+segIntersect :: (Ord a, Fractional a) => V2 a -> V2 a -> V2 a -> V2 a -> Maybe (V2 a)
+segIntersect aa ab ba bb
+  | aax == abx  = if inRange bax bbx aax then let ty = segY ba bb aax in if inRange aay aby ty then Just (V2 aax ty) else Nothing else Nothing
+  | bax == bbx  = if inRange aax abx bax then let ty = segY aa ab bax in if inRange bay bby ty then Just (V2 bax ty) else Nothing else Nothing 
+  | mdiff == 0  = Nothing
+  | otherwise   = Just (V2 (bax + dx) (bay + dx * bm))
+  where
+    V2 aax aay = aa
+    V2 abx aby = ab
+    V2 bax bay = ba
+    V2 bbx bby = bb
+    V2 adx ady = ab - aa
+    V2 bdx bdy = bb - ba
+    am = ady / adx
+    bm = bdy / bdx
+    mdiff = am - bm
+    height = bay - aay - (bax - aax) * am
+    dx = height / mdiff
+
+    inRange a b c
+      | a < b     = (a <= c) && (c <= b)
+      | otherwise = (b <= c) && (c <= a)
