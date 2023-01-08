@@ -94,3 +94,31 @@ segIntersect aa ab ba bb
     inRange a b c
       | a < b     = (a <= c) && (c <= b)
       | otherwise = (b <= c) && (c <= a)
+
+
+data SegCache a = SegCache a a | SegVertical a
+
+makeSegCache :: (Ord a, Fractional a) => V2 a -> V2 a -> SegCache a
+makeSegCache a b
+  | dx == 0   = SegVertical ax
+  | otherwise = SegCache m (ay - ax * m)
+  where
+    V2 dx dy = b - a
+    V2 ax ay = a
+    m = dy / dx
+
+segCacheY :: (Num a) => SegCache a -> a -> Maybe a
+segCacheY (SegCache m c) x = Just (c + m * x)
+segCacheY (SegVertical _) _ = Nothing
+
+segCacheIntersect :: (Eq a, Fractional a) => SegCache a -> SegCache a -> Maybe (V2 a)
+segCacheIntersect (SegVertical _) (SegVertical _) = Nothing
+segCacheIntersect (SegVertical x) (SegCache m c) = Just (V2 x (c + m * x))
+segCacheIntersect (SegCache m c) (SegVertical x) = Just (V2 x (c + m * x))
+segCacheIntersect (SegCache am ac) (SegCache bm bc) 
+  | dm == 0   = Nothing
+  | otherwise = Just (V2 cx cy)
+  where
+    dm = bm - am
+    cx = (ac - bc) / dm
+    cy = ac + am * cx
