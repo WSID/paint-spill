@@ -23,8 +23,17 @@ cmpPtrs (V2 ax ay) (V2 bx by) = case compare ax bx of
 cmpVerts :: (Ord a) => (i, V2 a) -> (i, V2 a) -> Ordering
 cmpVerts = compare `on` snd
 
-polyElemE :: (Ord a, Fractional a, Enum e) => e -> (e -> Bool) -> V2 a -> [[V2 a]] -> Bool
-polyElemE start func point poly = or (func <$> [fmin .. fmax])
+
+-- Denotes non-zero filling rule.
+nonZero :: Int -> Bool
+nonZero = (/= 0)
+
+-- Denotes even-odd filling rule.
+evenOdd :: Int -> Bool
+evenOdd = odd
+
+polyElem :: (Ord a, Fractional a) => (Int -> Bool) -> V2 a -> [[V2 a]] -> Bool
+polyElem fill point poly = or (fill <$> [fmin .. fmax])
   where
     segify strips = zip4 strips (drop 1 sc) (drop 2 sc) (drop 3 sc)
       where
@@ -74,17 +83,14 @@ polyElemE start func point poly = or (func <$> [fmin .. fmax])
               GT -> (fmin, succ fmax)
           | otherwise = (fmin, fmax)
 
-    (fmin, fmax) = foldr (step point) (start, start) segs
+    (fmin, fmax) = foldr (step point) (0, 0) segs
 
-
-polyElemI :: (Ord a, Fractional a) => (Int -> Bool) -> V2 a -> [[V2 a]] -> Bool
-polyElemI func = polyElemE 0 func
 
 polyElemEvenOdd :: (Ord a, Fractional a) => V2 a -> [[V2 a]] -> Bool
-polyElemEvenOdd = polyElemI odd
+polyElemEvenOdd = polyElem evenOdd
 
 polyElemNonZero :: (Ord a, Fractional a) => V2 a -> [[V2 a]] -> Bool
-polyElemNonZero = polyElemI (/= 0)
+polyElemNonZero = polyElem nonZero
 
 data MonoMark i a
     = MonoLeft (i, V2 a) (i, V2 a)
@@ -106,8 +112,8 @@ instance (NFData i, NFData a) => NFData (MonoMark i a) where
 data TrackDir = TrackLeft | TrackRight deriving (Eq, Show)
 
 -- TODO: Lint up track data.
-data MonoTrack e i a = MonoTrack
-    { monoTrackOverlaps :: e
+data MonoTrack i a = MonoTrack
+    { monoTrackOverlaps :: Int
     , monoTrackOutline :: Bool
     , monoTrackDown :: MonoSegTrack i a
     , monoTrackUp :: MonoSegTrack i a
@@ -192,39 +198,37 @@ isSegTrackVertical (MonoSegTrack _ (_, V2 px _) (_, V2 cx _)) = px == cx
 segYSegTrack :: (Ord a, Fractional a) => MonoSegTrack i a -> a -> a
 segYSegTrack (MonoSegTrack _ (_, pv) (_, cv)) x = segY pv cv x 
 
-data MonotoneDecomp e i a = MonotoneDecomp e (e -> Bool) [MonoTrack e i a] [XMonotone i a]
+data MonotoneDecomp i a = MonotoneDecomp (Int -> Bool) [MonoTrack i a] [XMonotone i a]
 
-pushTrack :: MonoTrack e i a -> MonotoneDecomp e i a -> MonotoneDecomp e i a
-pushTrack t (MonotoneDecomp start fill ts ms) = MonotoneDecomp start fill (t: ts) ms
+pushTrack :: MonoTrack i a -> MonotoneDecomp i a -> MonotoneDecomp i a
+pushTrack t (MonotoneDecomp fill ts ms) = MonotoneDecomp fill (t: ts) ms
 
-pushMonotone :: XMonotone i a -> MonotoneDecomp e i a -> MonotoneDecomp e i a
-pushMonotone m (MonotoneDecomp start fill ts ms) = MonotoneDecomp start fill ts (m: ms)
+pushMonotone :: XMonotone i a -> MonotoneDecomp i a -> MonotoneDecomp i a
+pushMonotone m (MonotoneDecomp fill ts ms) = MonotoneDecomp fill ts (m: ms)
 
-popTrack :: MonotoneDecomp e i a -> Maybe (MonotoneDecomp e i a, MonoTrack e i a)
-popTrack (MonotoneDecomp start fill (t: ts) ms) = Just (MonotoneDecomp start fill ts ms, t)
+popTrack :: MonotoneDecomp i a -> Maybe (MonotoneDecomp i a, MonoTrack i a)
+popTrack (MonotoneDecomp fill (t: ts) ms) = Just (MonotoneDecomp fill ts ms, t)
 popTrack _ = Nothing 
 
 
-monotoneDecompE :: (Enum e, Eq i, Ord a, Fractional a, Show e, Show i, Show a) => e -> (e -> Bool) -> [[(i, V2 a)]] -> [XMonotone i a]
-monotoneDecompE start fill poly = monotoneDecompGo start fill (makeSortedMarks poly) (MonotoneDecomp start fill [] [])
+monotoneDecomp :: (Eq i, Ord a, Fractional a, Show i, Show a) => (Int -> Bool) -> [[(i, V2 a)]] -> [XMonotone i a]
+monotoneDecomp fill poly = monotoneDecompGo fill (makeSortedMarks poly) (MonotoneDecomp fill [] [])
 
-monotoneDecompI :: (Eq i, Ord a, Fractional a, Show i, Show a) => (Int -> Bool) -> [[(i, V2 a)]] -> [XMonotone i a]
-monotoneDecompI = monotoneDecompE 0
 
 monotoneDecompNonZero :: (Eq i, Ord a, Fractional a, Show i, Show a) => [[(i, V2 a)]] -> [XMonotone i a]
-monotoneDecompNonZero = monotoneDecompI (/= 0)
+monotoneDecompNonZero = monotoneDecomp nonZero
 
 monotoneDecompEvenOdd :: (Eq i, Ord a, Fractional a, Show i, Show a) => [[(i, V2 a)]] -> [XMonotone i a]
-monotoneDecompEvenOdd = monotoneDecompI odd
+monotoneDecompEvenOdd = monotoneDecomp evenOdd
 
-monotoneDecompGo :: (Enum e, Eq i, Ord a, Fractional a, Show e, Show i, Show a) => e -> (e -> Bool) -> [MonoMark i a] -> MonotoneDecomp e i a -> [XMonotone i a]
-monotoneDecompGo start fill ms md = let MonotoneDecomp start fill tracks accum = foldl (flip go) md ms in case tracks of
+monotoneDecompGo :: (Eq i, Ord a, Fractional a, Show i, Show a) => (Int -> Bool) -> [MonoMark i a] -> MonotoneDecomp i a -> [XMonotone i a]
+monotoneDecompGo fill ms md = let MonotoneDecomp fill tracks accum = foldl (flip go) md ms in case tracks of
   [] -> accum
   _ -> error "Not concluded tracks."
   where
     go (MonoSPos a b c) = pushTrack MonoTrack
-        { monoTrackOverlaps = (succ start)
-        , monoTrackOutline = (fill start /= fill (succ start))
+        { monoTrackOverlaps = 1
+        , monoTrackOutline = (fill 0 /= fill 1)
         , monoTrackDown = MonoSegTrack TrackLeft b c
         , monoTrackUp = MonoSegTrack TrackRight b a
         , monoTrackStrip = MonoStripSingle b []
@@ -235,7 +239,7 @@ monotoneDecompGo start fill ms md = let MonotoneDecomp start fill tracks accum =
     go (MonoSNeg a b c) = monotoneDecompSNeg a b c
     go (MonoENeg a) = monotoneDecompENeg a
 
-monotoneDecompLeft :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompLeft :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompLeft (ai, av) b md = case popTrack md of
   Just (nmd, t)
     | dd == TrackLeft && di == ai -> case ts of
@@ -261,7 +265,7 @@ monotoneDecompLeft (ai, av) b md = case popTrack md of
   Nothing -> error "Matching for left mark, not found!"
 
 
-monotoneDecompRight :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompRight :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompRight (ai, av) b md = case popTrack md of
   Just (nmd, t)
     | dd == TrackRight && di == ai -> case ts of
@@ -287,7 +291,7 @@ monotoneDecompRight (ai, av) b md = case popTrack md of
   Nothing -> error "Matching for right mark, not found!"
 
 
-monotoneDecompEPos :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompEPos :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompEPos b md = case popTrack md of
   Just (nmd, t)
     | dd == TrackLeft && ud == TrackRight && di == bi && ui == bi -> case ts of
@@ -306,7 +310,7 @@ monotoneDecompEPos b md = case popTrack md of
   Nothing -> error "Matching track for End not found!"
 
 
-monotoneDecompSNeg :: (Enum e, Ord a, Fractional a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompSNeg :: (Ord a, Fractional a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompSNeg a b c md = case popTrack md of
   Just (nmd, t)
     | (dy <= by) && (by <= uy) -> case ts of
@@ -324,9 +328,6 @@ monotoneDecompSNeg a b c md = case popTrack md of
         MonoStripFork ds dst us ust -> nmd
           & pushTrack t {monoTrackDown = MonoSegTrack TrackLeft b c, monoTrackUp = u, monoTrackStrip = MonoStripSingle us (Down b: N.toList ust)}
           & pushTrack t {monoTrackDown = d, monoTrackUp = MonoSegTrack TrackRight b a, monoTrackStrip = MonoStripSingle ds (Up b: N.toList dst)}
-          where
-            --ne = pred n
-            --nout = (fill e) /= (fill ne)
     | otherwise -> pushTrack t $ monotoneDecompSNeg a b c nmd
     where
       MonoTrack _ inc d u ts = t
@@ -338,17 +339,17 @@ monotoneDecompSNeg a b c md = case popTrack md of
 
   Nothing -> pushTrack
       MonoTrack
-        { monoTrackOverlaps = pred start
-        , monoTrackOutline = not (fill start) && fill (pred start)
+        { monoTrackOverlaps = (-1)
+        , monoTrackOutline = not (fill 0) && fill (-1)
         , monoTrackDown = MonoSegTrack TrackRight b a
         , monoTrackUp = MonoSegTrack TrackLeft b c
         , monoTrackStrip = MonoStripSingle b []
         }
       md
   where
-    MonotoneDecomp start fill _ _ = md
+    MonotoneDecomp fill _ _ = md
 
-monotoneDecompENeg :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompENeg :: (Eq i, Ord a) => (i, V2 a) -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompENeg a md = case popTrack md of
   Just (nmd, t)
     | i == di && i == ui && dd == TrackRight && ud == TrackLeft -> case ts of
@@ -367,7 +368,7 @@ monotoneDecompENeg a md = case popTrack md of
         MonoStripFork ds dst us ust -> monotoneDecompENegUp a d ds (N.toList dst) (pushMonotone (XMonotone a ust us) nmd)
     | otherwise -> pushTrack t $ monotoneDecompENeg a nmd
     where
-      MonotoneDecomp start fill _ _ = md
+      MonotoneDecomp fill _ _ = md
       MonoTrack _ inc (MonoSegTrack dd _ d) (MonoSegTrack ud _ u) ts = t
       (i, V2 x y) = a
       (di, V2 dx dy) = d
@@ -375,7 +376,7 @@ monotoneDecompENeg a md = case popTrack md of
 
   Nothing -> error "Matching track for Join, not found!"
 
-monotoneDecompENegDown :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompENegDown :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompENegDown a pu us ust md = case popTrack md of
   Just (nmd, t)
     | i == ui -> case ts of
@@ -391,7 +392,7 @@ monotoneDecompENegDown a pu us ust md = case popTrack md of
 
   Nothing -> error "Matching down track for Join, not found!"
 
-monotoneDecompENegUp :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp e i a -> MonotoneDecomp e i a
+monotoneDecompENegUp :: (Eq i, Ord a) => (i, V2 a) -> (i, V2 a) -> (i, V2 a) -> [DownUp (i, V2 a)] -> MonotoneDecomp i a -> MonotoneDecomp i a
 monotoneDecompENegUp a pd ds dst md = case popTrack md of
   Just (nmd, t)
     | i == di -> case ts of
